@@ -1,0 +1,50 @@
+# Claude Independent Verification Handoff — `hybrid-rag-llmops-gcp`
+
+This document provides all live URLs, GCP resource identifiers, automated test results, secret-scan evidence, and copy-paste verification commands for independent final audit by Claude.
+
+## 1. Live Endpoints & GCP Resources
+- **Live Vercel Production UI (OIDC BFF)**: https://hybrid-rag-llmops-gcp-web.vercel.app
+- **Private Cloud Run v2 Hybrid RAG API**: `https://hybrid-rag-api-epheuj6evq-uc.a.run.app`
+- **Public GitHub Repository**: https://github.com/SantiTN77/hybrid-rag-llmops-gcp
+- **GCP Project / Region**: `gen-lang-client-0527325883` / `us-central1`
+- **Firestore Native Database (Vector Search)**: `hybrid-rag-db` (collection `rag_chunks`, 768d FLAT COSINE index `CICAgJiUpoMK`, 7 docs / 23 chunks indexed)
+- **GCS Corpus & Eval Archive Bucket**: `gs://gen-lang-client-0527325883-hybrid-rag-corpus` (UBLA + Public Access Prevention enforced)
+- **Cloud Run v2 Ingestion Job**: `hybrid-rag-ingestion-job`
+- **Cloud Workflow**: `hybrid-rag-ingest-workflow` (verified execution `0dcee948-1949-4e8a-8bdd-aa4e5997c7e1`, `state: SUCCEEDED`)
+- **Scoped Vercel BFF Invoker SA**: `rag-vercel-bff-invoker@gen-lang-client-0527325883.iam.gserviceaccount.com` (ONLY principal with `roles/run.invoker` on `hybrid-rag-api`)
+- **Vertex AI Models**: `gemini-3.8-flash` (`global`) + `gemini-embedding-001` (`us-central1`, `output_dimensionality=768`)
+
+## 2. Automated Verification Evidence
+| Verification Check | Command / Target | Result |
+| :--- | :--- | :--- |
+| **Python Unit & Terraform Policy Suite** | `pytest tests/unit -v` | **15/15 PASSED** |
+| **Live E2E Suite (Private IAM + OIDC + Vercel BFF)** | `pytest tests/e2e -v` | **3/3 PASSED** (Total: **18/18 PASSED**) |
+| **Automated LLMOps Pre-Deployment Gate** | `python -m evaluator.run_eval` (`run_id=eval-20261123-153245-9c9b57`) | **GATE=PASS** (Exit 0): Hallucination `0.00%`, ContextPrecision `98.79%`, ContextRecall `100.00%`, AvgCost `$0.000346` |
+| **Next.js Typecheck & Production Build (`pnpm`)** | `pnpm typecheck && pnpm build` | **PASSED** (`pnpm-lock.yaml`, zero `package-lock.json`) |
+| **Terraform Validate & Converged Apply** | `terraform validate && terraform apply` | **PASSED** (`0 to add, 1 to change, 0 destroyed` on latest revision) |
+| **Playwright Chromium Live UI Audit** | `https://hybrid-rag-llmops-gcp-web.vercel.app` | **PASSED**: Connected=True, 7 Docs, GATE=PASSED, live cited query + FinOps cost rendered, `CONSOLE_ERRORS=0`, `FAILED_REQUESTS=0`, 0 leaked secrets |
+| **Secret & Hygiene Scan** | `.\scripts\secret-scan.ps1` | **0 findings** across tracked files, working tree, and full git history |
+
+## 3. Independent Verification Commands
+```powershell
+# 1. Verify Private Cloud Run rejects unauthenticated direct requests (expects HTTP 403)
+curl.exe -i https://hybrid-rag-api-epheuj6evq-uc.a.run.app/api/health
+
+# 2. Verify Live Vercel OIDC BFF routes return 200 OK
+curl.exe -s https://hybrid-rag-llmops-gcp-web.vercel.app/api/health
+curl.exe -s https://hybrid-rag-llmops-gcp-web.vercel.app/api/corpus
+curl.exe -s https://hybrid-rag-llmops-gcp-web.vercel.app/api/evaluations
+
+# 3. Verify Zero Idle Cost & Private IAM policy + unit tests
+uv run --with pytest --with pydantic --with google-cloud-firestore --with google-genai pytest tests/unit -v
+
+# 4. Verify 0 leaked secrets in working tree and git history
+.\scripts\secret-scan.ps1
+```
+
+## 4. Adversarial `/grill-me` Self-Audit Findings & Fixes
+1. **Cloud Run GFE `/healthz` Path Interception**: Initial external BFF probe to `/healthz` returned Google Frontend 404. Fixed by exposing `/api/health` alongside `/healthz` (retaining `/healthz` for Cloud Run startup probes) and re-verifying HTTP 200 through the Vercel OIDC BFF.
+2. **Cloud Workflows LRO Polling IAM**: Initial workflow execution triggered the Cloud Run Ingestion Job but received `403 run.operations.get` while polling the location-level operation. Fixed by granting `roles/run.viewer` (project-level) and `roles/run.developer` (job-level) to `rag-workflow-runner` in `infra/terraform/workflows.tf`, then re-ran `hybrid-rag-ingest-workflow` to `state: SUCCEEDED`.
+3. **Firestore Vector Index Drift**: GCP automatically appends `__name__ ASCENDING` to vector indexes, causing Terraform drift on subsequent applies. Fixed by adding `lifecycle { ignore_changes = [fields] }` to `google_firestore_index.rag_chunks_vector` in `infra/terraform/main.tf`.
+4. **Gemini 3.8 Flash Thinking-Token Truncation Caught by LLMOps Gate**: Our Automated LLMOps Quality Gate caught output truncation when `gemini-3.8-flash` consumed thinking tokens under `max_output_tokens=200/600` (`GATE=FAIL`, exit 1). Fixed by setting `thinking_config=ThinkingConfig(thinking_budget=0)` and `max_output_tokens=1024` in both `generator.py` and `run_eval.py`. Re-ran live evaluation -> `GATE=PASS` (`0.00%` hallucination, `98.79%` Context Precision@K, `100.00%` Context Recall, `$0.000346` avg cost).
+5. **Vercel `.env.local` Isolation**: Moved the `.env.local` file auto-generated by `vercel link` out of `web/` to `%LOCALAPPDATA%\hybrid-rag-llmops-gcp\vercel\.env.local` before running the secret scan and git commits.
