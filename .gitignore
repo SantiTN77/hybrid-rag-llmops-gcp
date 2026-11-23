@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Node / Next.js / Vercel (pnpm only)
+node_modules/
+.next/
+out/
+.vercel/
+package-lock.json
+npm-debug.log*
+
+# Secrets & Environment
+.env
+.env.*
+!.env.example
+*.pem
+*.p12
+*.pfx
+*.key
+*service-account*.json
+*sa-key*.json
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!terraform.tfvars.example
+crash.log
+override.tf
+override.tf.json
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+*.swp

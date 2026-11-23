@@ -1,0 +1,137 @@
+{
+  "dataset_version": "1.0.0",
+  "description": "Synthetic Enterprise Technical Golden Evaluation Dataset for Hybrid RAG LLMOps Quality Gate",
+  "gate_thresholds": {
+    "max_hallucination_rate": 0.10,
+    "min_context_precision": 0.75,
+    "max_avg_cost_per_query_usd": 0.005
+  },
+  "cases": [
+    {
+      "id": "eval-001",
+      "category": "factual",
+      "query": "What HTTP status codes must a private Cloud Run endpoint return for unauthenticated direct requests, and which Service Account is allowed to invoke it?",
+      "expected_doc_ids": ["doc-001-cloud-run-iam"],
+      "expected_facts": ["401", "403", "rag-vercel-bff-invoker", "roles/run.invoker"],
+      "ground_truth_answer": "Unauthenticated direct requests to a private Cloud Run endpoint must return HTTP 401 Unauthorized or 403 Forbidden. Only the dedicated least-privilege invoker Service Account (rag-vercel-bff-invoker) is granted roles/run.invoker.",
+      "unanswerable": false
+    },
+    {
+      "id": "eval-002",
+      "category": "numeric_sla",
+      "query": "What are the MTTA, MTTM, and executive update intervals for a SEV-1 critical outage?",
+      "expected_doc_ids": ["doc-004-incident-response-sla"],
+      "expected_facts": ["15 minutes", "60 minutes", "30 minutes"],
+      "ground_truth_answer": "For a SEV-1 critical outage, MTTA is 15 minutes, MTTM is 60 minutes, and executive status updates are required every 30 minutes.",
+      "unanswerable": false
+    },
+    {
+      "id": "eval-003",
+      "category": "factual",
+      "query": "Why did Meridian choose GCP Firestore Vector Search over Vertex AI Vector Search Index Endpoints, and what is the maximum vector dimension supported by Firestore?",
+      "expected_doc_ids": ["doc-002-firestore-vector-runbook"],
+      "expected_facts": ["$0.00 idle cost", "2048", "768"],
+      "ground_truth_answer": "Firestore Vector Search is serverless with $0.00 idle cost compared to always-on Vertex AI Vector Search Index Endpoints ($75-$140/month per node). Firestore supports up to 2048 dimensions maximum, and Meridian enforces output_dimensionality=768.",
+      "unanswerable": false
+    },
+    {
+      "id": "eval-004",
+      "category": "numeric_sla",
+      "query": "What are the exact FinOps token pricing rates for gemini-3.8-flash input, output, and Vertex AI embedding tokens?",
+      "expected_doc_ids": ["doc-003-vertex-ai-cost-governance"],
+      "expected_facts": ["0.15", "0.60", "0.025"],
+      "ground_truth_answer": "Meridian's FinOps rate card prices gemini-3.8-flash input tokens at $0.15 per 1M tokens, output tokens at $0.60 per 1M tokens, and Vertex AI embedding tokens at $0.025 per 1M tokens.",
+      "unanswerable": false
+    },
+    {
+      "id": "eval-005",
+      "category": "factual",
+      "query": "What RRF smoothing constant k and default dense vs lexical weights are configured in the Hybrid RAG API?",
+      "expected_doc_ids": ["doc-002-firestore-vector-runbook"],
+      "expected_facts": ["60", "0.60", "0.40", "BM25"],
+      "ground_truth_answer": "Reciprocal Rank Fusion (RRF) uses smoothing constant k=60 with default weights w_v=0.60 for dense Firestore cosine vector search and w_l=0.40 for Okapi BM25 lexical search.",
+      "unanswerable": false
+    },
+    {
+      "id": "eval-006",
+      "category": "factual",
+      "query": "What GCS bucket security controls and regions are required by the Enterprise Data Residency and Cloud DLP Standard?",
+      "expected_doc_ids": ["doc-005-data-residency-dlp"],
+      "expected_facts": ["us-central1", "europe-west4", "uniform_bucket_level_access", "public_access_prevention"],
+      "ground_truth_answer": "Regulated RAG corpora must use single-region us-central1 (US) or europe-west4 (EU) buckets with uniform_bucket_level_access=true, public_access_prevention='enforced', object versioning, and a 90-day non-current lifecycle rule.",
+      "unanswerable": false
+    },
+    {
+      "id": "eval-007",
+      "category": "multi_hop",
+      "query": "How do the Zero Idle Cost scaling settings for Cloud Run v2 compare with the automated rollback threshold and Cloud Workflows batch orchestration?",
+      "expected_doc_ids": ["doc-001-cloud-run-iam", "doc-004-incident-response-sla", "doc-006-k8s-to-serverless-playbook"],
+      "expected_facts": ["min_instance_count = 0", "max_instance_count = 2", "2.5%", "Cloud Workflows"],
+      "ground_truth_answer": "Cloud Run v2 services enforce min_instance_count=0, max_instance_count=2, and deletion_protection=false. If HTTP 5xx errors exceed 2.5% over 3 minutes, traffic rolls back 100% to the prior revision. Batch ingestion uses Cloud Run Jobs orchestrated by serverless Cloud Workflows.",
+      "unanswerable": false
+    },
+    {
+      "id": "eval-008",
+      "category": "numeric_sla",
+      "query": "What are the three mandatory pre-deployment LLMOps quality gate thresholds?",
+      "expected_doc_ids": ["doc-007-llmops-evaluation-standard"],
+      "expected_facts": ["0.10", "0.75", "0.005"],
+      "ground_truth_answer": "The three mandatory thresholds are Hallucination Rate <= 0.10 (10%), Context Precision@K >= 0.75 (75%), and Average Cost per Query <= $0.005 USD.",
+      "unanswerable": false
+    },
+    {
+      "id": "eval-009",
+      "category": "factual",
+      "query": "What exponential backoff parameters does the RAG API use when Vertex AI returns HTTP 429 RESOURCE_EXHAUSTED?",
+      "expected_doc_ids": ["doc-004-incident-response-sla"],
+      "expected_facts": ["250ms", "2.0", "3", "12 seconds"],
+      "ground_truth_answer": "For HTTP 429 RESOURCE_EXHAUSTED, the RAG API uses exponential backoff with jitter: 250ms initial delay, 2.0 multiplier, max 3 retries, and a 12-second total deadline.",
+      "unanswerable": false
+    },
+    {
+      "id": "eval-010",
+      "category": "factual",
+      "query": "What FinOps savings and cold-start latency did Meridian observe when migrating 14 services from GKE Standard to Cloud Run v2?",
+      "expected_doc_ids": ["doc-006-k8s-to-serverless-playbook"],
+      "expected_facts": ["78%", "62%", "1.8 seconds"],
+      "ground_truth_answer": "Meridian observed an average 78% reduction in monthly compute spend, 62% reduction in YAML/Terraform maintenance overhead, and P95 cold-start latency under 1.8 seconds.",
+      "unanswerable": false
+    },
+    {
+      "id": "eval-011",
+      "category": "multi_hop",
+      "query": "Which IAM roles are granted to the rag-ingestion-job Service Account and how must it handle PII before writing embeddings to Firestore?",
+      "expected_doc_ids": ["doc-001-cloud-run-iam", "doc-005-data-residency-dlp"],
+      "expected_facts": ["roles/storage.objectViewer", "roles/datastore.user", "roles/aiplatform.user", "REDACTED"],
+      "ground_truth_answer": "rag-ingestion-job is granted roles/storage.objectViewer, roles/datastore.user, roles/aiplatform.user, and roles/logging.logWriter. Before embedding, it must scan for PII and replace sensitive tokens with deterministic placeholders like [REDACTED_SSN] or [REDACTED_EMAIL].",
+      "unanswerable": false
+    },
+    {
+      "id": "eval-012",
+      "category": "unanswerable",
+      "query": "What is Meridian's approved AWS EKS cluster auto-scaling budget and Amazon Bedrock Claude 3.7 pricing rate card?",
+      "expected_doc_ids": [],
+      "expected_facts": [],
+      "ground_truth_answer": "Insufficient evidence in the indexed corpus to answer questions about AWS EKS or Amazon Bedrock pricing.",
+      "unanswerable": true
+    },
+    {
+      "id": "eval-013",
+      "category": "unanswerable",
+      "query": "Who is the current Chief Financial Officer of Meridian Cloud Platform and what was Q3 2026 net revenue?",
+      "expected_doc_ids": [],
+      "expected_facts": [],
+      "ground_truth_answer": "Insufficient evidence in the indexed corpus to identify Meridian's CFO or Q3 2026 net revenue.",
+      "unanswerable": true
+    },
+    {
+      "id": "eval-014",
+      "category": "unanswerable",
+      "query": "What is the Wi-Fi password and physical badge access procedure for Meridian's Zurich office?",
+      "expected_doc_ids": [],
+      "expected_facts": [],
+      "ground_truth_answer": "Insufficient evidence in the indexed corpus regarding Zurich office Wi-Fi or badge access.",
+      "unanswerable": true
+    }
+  ]
+}
