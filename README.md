@@ -7,6 +7,12 @@
 
 A production-grade, 100% serverless **Enterprise Hybrid RAG & Automated LLMOps** platform on Google Cloud Platform featuring **GCP Firestore Vector Search** (`find_nearest` COSINE 768d) + **Okapi BM25** fused via **Reciprocal Rank Fusion (RRF)**, **Vertex AI `gemini-3.8-flash`** grounded synthesis with inline `[doc_id#chunk]` citations, **Cloud Run v2 Jobs + Cloud Workflows** asynchronous ingestion, **Cloud Logging** FinOps cost-per-query telemetry, an **Automated Pre-Deployment LLMOps Quality Gate**, and a **Vercel Next.js App Router OIDC BFF** web console.
 
+## Demo
+
+[![Watch the narrated demo](docs/media/demo-poster.jpg)](https://github.com/SantiTN77/hybrid-rag-llmops-gcp/releases/download/v1.0.0/rag-demo.mp4)
+
+**[▶ Watch the 1080p narrated demo](https://github.com/SantiTN77/hybrid-rag-llmops-gcp/releases/download/v1.0.0/rag-demo.mp4)** · **[Open the live app](https://hybrid-rag-llmops-gcp-web.vercel.app)**
+
 ## Live Production Deployment
 - **Vercel Operations Console (OIDC BFF)**: https://hybrid-rag-llmops-gcp-web.vercel.app
 - **Private Cloud Run v2 Hybrid RAG API**: `https://hybrid-rag-api-epheuj6evq-uc.a.run.app` *(Private IAM — unauthenticated direct requests return `HTTP 403 Forbidden`)*
@@ -63,3 +69,8 @@ cd web && pnpm install && pnpm typecheck && pnpm build
 # 4. Run Secret Scan (0 findings)
 .\scripts\secret-scan.ps1
 ```
+
+## Author
+
+**Daniel Tafur** — AI Agent Engineer · AI Solutions Architect (GCP)  
+[LinkedIn](https://www.linkedin.com/in/danielsantiagotafur/) · [Portfolio](https://danieltafur.vercel.app)
