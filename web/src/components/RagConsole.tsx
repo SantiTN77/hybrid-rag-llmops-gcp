@@ -134,38 +134,49 @@ export default function RagConsole() {
   };
 
   const renderAnswerWithCitations = (text: string, citedIds: string[]) => {
-    const parts = text.split(/(\[doc-[a-zA-Z0-9-]+#\d+\])/g);
+    // Citations may be single "[doc-x#0]" or grouped "[doc-x#0, doc-y#1]".
+    const CITE = /(\[doc-[a-zA-Z0-9-]+#\d+(?:\s*,\s*doc-[a-zA-Z0-9-]+#\d+)*\])/g;
+    const parts = text.split(CITE);
     return parts.map((part, idx) => {
-      const match = part.match(/^\[(doc-[a-zA-Z0-9-]+#\d+)\]$/);
-      if (match) {
-        const cid = match[1];
-        const isKnown = citedIds.includes(cid);
+      if (/^\[doc-[a-zA-Z0-9-]+#\d+(?:\s*,\s*doc-[a-zA-Z0-9-]+#\d+)*\]$/.test(part)) {
+        const ids = part.slice(1, -1).split(/\s*,\s*/);
         return (
-          <button
-            key={`${cid}-${idx}`}
-            type="button"
-            onClick={() => setHighlightedChunkId(cid)}
-            className={`mx-0.5 inline-flex items-center rounded px-1.5 py-0.5 font-mono text-xs transition ${
-              highlightedChunkId === cid
-                ? "bg-cyan-400 text-slate-950 font-semibold"
-                : isKnown
-                ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 hover:bg-cyan-500/30"
-                : "bg-slate-800 text-slate-300 border border-slate-700"
-            }`}
-          >
-            {part}
-          </button>
+          <span key={`cite-${idx}`}>
+            {ids.map((cid) => {
+              const isKnown = citedIds.includes(cid);
+              return (
+                <button
+                  key={`${cid}-${idx}`}
+                  type="button"
+                  onClick={() => setHighlightedChunkId(cid)}
+                  className={`mx-0.5 inline-flex items-center rounded px-1.5 py-0.5 font-mono text-xs transition ${
+                    highlightedChunkId === cid
+                      ? "bg-cyan-400 text-slate-950 font-semibold"
+                      : isKnown
+                      ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 hover:bg-cyan-500/30"
+                      : "bg-slate-800 text-slate-300 border border-slate-700"
+                  }`}
+                >
+                  [{cid}]
+                </button>
+              );
+            })}
+          </span>
         );
       }
-      // Render lightweight **bold** markdown emitted by the model without injecting HTML.
-      const boldParts = part.split(/(\*\*[^*]+\*\*)/g);
+      // Render lightweight **bold** and `code` markdown emitted by the model without injecting HTML.
+      const segs = part.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
       return (
         <span key={idx}>
-          {boldParts.map((seg, j) =>
+          {segs.map((seg, j) =>
             /^\*\*[^*]+\*\*$/.test(seg) ? (
               <strong key={j} className="font-semibold text-slate-50">
                 {seg.slice(2, -2)}
               </strong>
+            ) : /^`[^`]+`$/.test(seg) ? (
+              <code key={j} className="rounded bg-slate-800/80 px-1 py-0.5 font-mono text-[0.85em] text-amber-200">
+                {seg.slice(1, -1)}
+              </code>
             ) : (
               <span key={j}>{seg}</span>
             )
