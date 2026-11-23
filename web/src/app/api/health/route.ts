@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { upstreamFailure } from "@/lib/guard";
 import { invokePrivateRagApi } from "@/lib/cloudRunClient";
 import type { HealthResponse } from "@/lib/types";
 
@@ -10,7 +11,6 @@ export async function GET() {
     const data = await invokePrivateRagApi<HealthResponse>("/api/health");
     return NextResponse.json(data, { status: 200 });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Failed to reach private RAG API";
-    return NextResponse.json({ error: message }, { status: 502 });
+    return upstreamFailure("Private RAG API health", err);
   }
 }

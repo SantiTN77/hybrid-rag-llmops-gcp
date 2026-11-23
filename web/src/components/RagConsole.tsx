@@ -157,7 +157,21 @@ export default function RagConsole() {
           </button>
         );
       }
-      return <span key={idx}>{part}</span>;
+      // Render lightweight **bold** markdown emitted by the model without injecting HTML.
+      const boldParts = part.split(/(\*\*[^*]+\*\*)/g);
+      return (
+        <span key={idx}>
+          {boldParts.map((seg, j) =>
+            /^\*\*[^*]+\*\*$/.test(seg) ? (
+              <strong key={j} className="font-semibold text-slate-50">
+                {seg.slice(2, -2)}
+              </strong>
+            ) : (
+              <span key={j}>{seg}</span>
+            )
+          )}
+        </span>
+      );
     });
   };
 

@@ -3,7 +3,7 @@
 [![GCP Firestore Vector Search](https://img.shields.io/badge/GCP-Firestore%20Vector%20Search-4285F4?logo=googlecloud)](https://cloud.google.com/firestore/docs/vector-search)
 [![Vertex AI Gemini 3.8 Flash](https://img.shields.io/badge/Vertex%20AI-gemini--3.8--flash-34A853?logo=googlecloud)](https://cloud.google.com/vertex-ai)
 [![Zero Idle Cost](https://img.shields.io/badge/FinOps-%240.00%20Idle%20Cost-10B981)](docs/ARCHITECTURE.md)
-[![LLMOps Gate PASS](https://img.shields.io/badge/LLMOps%20Gate-PASS%20(0%25%20Hallucination)-10B981)](docs/CLAUDE_VERIFICATION.md)
+[![LLMOps Gate PASS](https://img.shields.io/badge/LLMOps%20Gate-PASS%20(0%25%20Hallucination)-10B981)](docs/VERIFICATION.md)
 
 A production-grade, 100% serverless **Enterprise Hybrid RAG & Automated LLMOps** platform on Google Cloud Platform featuring **GCP Firestore Vector Search** (`find_nearest` COSINE 768d) + **Okapi BM25** fused via **Reciprocal Rank Fusion (RRF)**, **Vertex AI `gemini-3.8-flash`** grounded synthesis with inline `[doc_id#chunk]` citations, **Cloud Run v2 Jobs + Cloud Workflows** asynchronous ingestion, **Cloud Logging** FinOps cost-per-query telemetry, an **Automated Pre-Deployment LLMOps Quality Gate**, and a **Vercel Next.js App Router OIDC BFF** web console.
 
@@ -46,7 +46,7 @@ A production-grade, 100% serverless **Enterprise Hybrid RAG & Automated LLMOps**
 - `infra/terraform/` — Complete Terraform IaC (APIs, AR, GCS, Firestore Native + Vector Index, SAs, Private Cloud Run, Workflows, Logging Metric)
 - `web/` — Next.js 15 App Router UI + Server-Side OIDC BFF (`pnpm` exclusively)
 - `tests/` — 15 unit/policy tests + 3 live E2E tests
-- `docs/` — [ARCHITECTURE.md](docs/ARCHITECTURE.md), [DEMO_WALKTHROUGH.md](docs/DEMO_WALKTHROUGH.md), [VIDEO_SCRIPT.md](docs/VIDEO_SCRIPT.md), [CLAUDE_VERIFICATION.md](docs/CLAUDE_VERIFICATION.md)
+- `docs/` — [ARCHITECTURE.md](docs/ARCHITECTURE.md), [DEMO_WALKTHROUGH.md](docs/DEMO_WALKTHROUGH.md), [VIDEO_SCRIPT.md](docs/VIDEO_SCRIPT.md), [VERIFICATION.md](docs/VERIFICATION.md)
 
 ## Quickstart & Verification
 ```powershell

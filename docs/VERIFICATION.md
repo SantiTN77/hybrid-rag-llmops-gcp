@@ -1,6 +1,6 @@
-# Claude Independent Verification Handoff — `hybrid-rag-llmops-gcp`
+# Independent Verification Guide — `hybrid-rag-llmops-gcp`
 
-This document provides all live URLs, GCP resource identifiers, automated test results, secret-scan evidence, and copy-paste verification commands for independent final audit by Claude.
+This document provides all live URLs, GCP resource identifiers, automated test results, secret-scan evidence, and copy-paste verification commands for independent review.
 
 ## 1. Live Endpoints & GCP Resources
 - **Live Vercel Production UI (OIDC BFF)**: https://hybrid-rag-llmops-gcp-web.vercel.app
@@ -42,7 +42,7 @@ uv run --with pytest --with pydantic --with google-cloud-firestore --with google
 .\scripts\secret-scan.ps1
 ```
 
-## 4. Adversarial `/grill-me` Self-Audit Findings & Fixes
+## 4. Adversarial Self-Audit Findings & Fixes
 1. **Cloud Run GFE `/healthz` Path Interception**: Initial external BFF probe to `/healthz` returned Google Frontend 404. Fixed by exposing `/api/health` alongside `/healthz` (retaining `/healthz` for Cloud Run startup probes) and re-verifying HTTP 200 through the Vercel OIDC BFF.
 2. **Cloud Workflows LRO Polling IAM**: Initial workflow execution triggered the Cloud Run Ingestion Job but received `403 run.operations.get` while polling the location-level operation. Fixed by granting `roles/run.viewer` (project-level) and `roles/run.developer` (job-level) to `rag-workflow-runner` in `infra/terraform/workflows.tf`, then re-ran `hybrid-rag-ingest-workflow` to `state: SUCCEEDED`.
 3. **Firestore Vector Index Drift**: GCP automatically appends `__name__ ASCENDING` to vector indexes, causing Terraform drift on subsequent applies. Fixed by adding `lifecycle { ignore_changes = [fields] }` to `google_firestore_index.rag_chunks_vector` in `infra/terraform/main.tf`.
