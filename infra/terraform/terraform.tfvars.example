@@ -1,0 +1,7 @@
+project_id             = "gen-lang-client-0527325883"
+region                 = "us-central1"
+artifact_registry_repo = "hybrid-rag-llmops-gcp"
+firestore_database_id  = "hybrid-rag-db"
+gemini_model           = "gemini-3.8-flash"
+embedding_model        = "gemini-embedding-001"
+embedding_dimension    = 768
