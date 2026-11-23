@@ -1,11 +1,24 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
+import { Geist, Geist_Mono, Instrument_Serif } from "next/font/google";
 import "./globals.css";
 
+const sans = Geist({ subsets: ["latin"], variable: "--font-geist", display: "swap" });
+const mono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono", display: "swap" });
+const serif = Instrument_Serif({
+  subsets: ["latin"],
+  weight: "400",
+  style: ["normal", "italic"],
+  variable: "--font-instrument",
+  display: "swap",
+});
+
 export const metadata: Metadata = {
-  title: "Enterprise Hybrid RAG & LLMOps Console | GCP Firestore Vector Search",
+  title: "Hybrid RAG & LLMOps Console | GCP Firestore Vector Search",
   description:
-    "Serverless Hybrid RAG (Firestore Vector Search + Okapi BM25 + RRF) with Vertex AI Gemini 3.8 Flash, Cloud Logging FinOps Telemetry, and Automated Pre-Deployment LLMOps Quality Gate.",
+    "Serverless Hybrid RAG (Firestore Vector Search + Okapi BM25 + RRF) with Vertex AI Gemini, per-query FinOps telemetry and an automated pre-deployment LLMOps quality gate.",
 };
+
+export const viewport: Viewport = { themeColor: "#F3F1EA" };
 
 export default function RootLayout({
   children,
@@ -13,10 +26,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark">
-      <body className="min-h-screen bg-[#070b14] text-slate-100 antialiased selection:bg-cyan-500/30 selection:text-cyan-100">
-        {children}
-      </body>
+    <html lang="en" className={`${sans.variable} ${mono.variable} ${serif.variable}`}>
+      <body className="min-h-screen bg-paper font-sans text-ink antialiased">{children}</body>
     </html>
   );
 }

@@ -1,27 +1,12 @@
 "use client";
 
 import React, { useCallback, useEffect, useState } from "react";
-import {
-  Activity,
-  AlertTriangle,
-  CheckCircle2,
-  Cpu,
-  Database,
-  DollarSign,
-  FileText,
-  Layers,
-  Lock,
-  Search,
-  ShieldCheck,
-  Sparkles,
-  XCircle,
-} from "lucide-react";
-import type {
-  CorpusResponse,
-  EvaluationsResponse,
-  HealthResponse,
-  QueryResponse,
-} from "@/lib/types";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { AlertTriangle, ArrowRight, Check, CornerDownLeft, Github, ShieldCheck, X } from "lucide-react";
+import type { CorpusResponse, EvaluationsResponse, HealthResponse, QueryResponse } from "@/lib/types";
+
+const EASE = [0.16, 1, 0.3, 1] as const;
+const REPO = "https://github.com/SantiTN77/hybrid-rag-llmops-gcp";
 
 interface SampleQuery {
   label: string;
@@ -39,8 +24,7 @@ const SAMPLE_QUERIES: SampleQuery[] = [
   {
     label: "SEV-1 Incident SLAs",
     tag: "Numeric SLA",
-    query:
-      "What are the MTTA, MTTM, and executive update intervals for a SEV-1 critical outage?",
+    query: "What are the MTTA, MTTM, and executive update intervals for a SEV-1 critical outage?",
   },
   {
     label: "Firestore Vector vs Vertex + RRF",
@@ -58,13 +42,107 @@ const SAMPLE_QUERIES: SampleQuery[] = [
 
 type RetrievalMode = "hybrid" | "vector" | "lexical";
 
-const MODE_WEIGHTS: Record<RetrievalMode, { vector: number; lexical: number; label: string }> = {
-  hybrid: { vector: 0.6, lexical: 0.4, label: "Hybrid RRF (60% Vector / 40% BM25)" },
-  vector: { vector: 1.0, lexical: 0.0, label: "Dense Vector Only (Firestore COSINE)" },
-  lexical: { vector: 0.0, lexical: 1.0, label: "Lexical Only (Okapi BM25)" },
+const MODE_WEIGHTS: Record<RetrievalMode, { vector: number; lexical: number; short: string }> = {
+  hybrid: { vector: 0.6, lexical: 0.4, short: "Hybrid RRF 0.6 / 0.4" },
+  vector: { vector: 1.0, lexical: 0.0, short: "Vector only" },
+  lexical: { vector: 0.0, lexical: 1.0, short: "BM25 only" },
 };
 
+const PIPELINE = ["Embed query", "Firestore vector search", "BM25 lexical", "RRF fusion", "Gemini synthesis"];
+
+/* ------------------------------------------------------------------ primitives */
+
+function Segmented<T extends string | number>({
+  id,
+  value,
+  options,
+  onChange,
+}: {
+  id: string;
+  value: T;
+  options: { value: T; label: string }[];
+  onChange: (v: T) => void;
+}) {
+  return (
+    <div className="relative inline-flex rounded-full border border-line bg-paper p-0.5 text-xs">
+      {options.map((o) => {
+        const active = o.value === value;
+        return (
+          <button
+            key={String(o.value)}
+            type="button"
+            onClick={() => onChange(o.value)}
+            aria-pressed={active}
+            className={`relative z-10 rounded-full px-3 py-1.5 transition-colors duration-300 ${
+              active ? "text-paper" : "text-ink-muted hover:text-ink"
+            }`}
+          >
+            {active ? (
+              <motion.span
+                layoutId={`seg-${id}`}
+                className="absolute inset-0 -z-10 rounded-full bg-ink"
+                transition={{ type: "spring", stiffness: 420, damping: 34 }}
+              />
+            ) : null}
+            {o.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function Bar({ value, tone = "ink", delay = 0 }: { value: number; tone?: "ink" | "accent" | "muted"; delay?: number }) {
+  const color = tone === "accent" ? "bg-accent" : tone === "muted" ? "bg-ink-faint" : "bg-ink";
+  return (
+    <div className="h-1 w-full overflow-hidden rounded-full bg-paper-deep">
+      <motion.div
+        className={`h-full rounded-full ${color}`}
+        initial={{ width: 0 }}
+        animate={{ width: `${Math.max(2, Math.min(100, value * 100))}%` }}
+        transition={{ duration: 0.9, ease: EASE, delay }}
+      />
+    </div>
+  );
+}
+
+function Pipeline({ running }: { running: boolean }) {
+  const [step, setStep] = useState(0);
+  useEffect(() => {
+    if (!running) return;
+    setStep(0);
+    const id = setInterval(() => setStep((s) => Math.min(s + 1, PIPELINE.length - 1)), 1100);
+    return () => clearInterval(id);
+  }, [running]);
+  return (
+    <ol className="grid grid-cols-5 gap-2">
+      {PIPELINE.map((label, i) => {
+        const done = i < step;
+        const current = i === step;
+        return (
+          <li key={label} className="min-w-0">
+            <div className="h-0.5 w-full overflow-hidden rounded-full bg-line">
+              <motion.div
+                className="h-full bg-accent"
+                initial={{ width: 0 }}
+                animate={{ width: done ? "100%" : current ? "60%" : "0%" }}
+                transition={{ duration: current ? 1.1 : 0.4, ease: "linear" }}
+              />
+            </div>
+            <p className={`mt-2 truncate font-mono text-[10px] ${done || current ? "text-ink" : "text-ink-faint"}`}>
+              {String(i + 1).padStart(2, "0")} {label}
+            </p>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+/* ------------------------------------------------------------------ console */
+
 export default function RagConsole() {
+  const reduce = useReducedMotion();
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [corpus, setCorpus] = useState<CorpusResponse | null>(null);
   const [evaluations, setEvaluations] = useState<EvaluationsResponse | null>(null);
@@ -88,11 +166,7 @@ export default function RagConsole() {
       if (hRes.ok) setHealth((await hRes.json()) as HealthResponse);
       if (cRes.ok) setCorpus((await cRes.json()) as CorpusResponse);
       if (eRes.ok) setEvaluations((await eRes.json()) as EvaluationsResponse);
-      if (!hRes.ok) {
-        setBootstrapError("Private Cloud Run API health check returned non-200.");
-      } else {
-        setBootstrapError(null);
-      }
+      setBootstrapError(hRes.ok ? null : "Private Cloud Run API health check returned non-200.");
     } catch (err) {
       setBootstrapError(err instanceof Error ? err.message : "Failed to initialize console.");
     }
@@ -108,23 +182,15 @@ export default function RagConsole() {
     setLoadingQuery(true);
     setQueryError(null);
     setHighlightedChunkId(null);
-
     try {
       const weights = MODE_WEIGHTS[mode];
       const res = await fetch("/api/query", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          query: q,
-          top_k: topK,
-          vector_weight: weights.vector,
-          lexical_weight: weights.lexical,
-        }),
+        body: JSON.stringify({ query: q, top_k: topK, vector_weight: weights.vector, lexical_weight: weights.lexical }),
       });
       const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || `HTTP ${res.status}`);
-      }
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       setResult(data as QueryResponse);
     } catch (err) {
       setQueryError(err instanceof Error ? err.message : "Query execution failed.");
@@ -134,52 +200,50 @@ export default function RagConsole() {
   };
 
   const renderAnswerWithCitations = (text: string, citedIds: string[]) => {
-    // Citations may be single "[doc-x#0]" or grouped "[doc-x#0, doc-y#1]".
     const CITE = /(\[doc-[a-zA-Z0-9-]+#\d+(?:\s*,\s*doc-[a-zA-Z0-9-]+#\d+)*\])/g;
-    const parts = text.split(CITE);
-    return parts.map((part, idx) => {
+    return text.split(CITE).map((part, idx) => {
       if (/^\[doc-[a-zA-Z0-9-]+#\d+(?:\s*,\s*doc-[a-zA-Z0-9-]+#\d+)*\]$/.test(part)) {
         const ids = part.slice(1, -1).split(/\s*,\s*/);
         return (
           <span key={`cite-${idx}`}>
             {ids.map((cid) => {
-              const isKnown = citedIds.includes(cid);
+              const known = citedIds.includes(cid);
+              const on = highlightedChunkId === cid;
               return (
                 <button
                   key={`${cid}-${idx}`}
                   type="button"
                   onClick={() => setHighlightedChunkId(cid)}
-                  className={`mx-0.5 inline-flex items-center rounded px-1.5 py-0.5 font-mono text-xs transition ${
-                    highlightedChunkId === cid
-                      ? "bg-cyan-400 text-slate-950 font-semibold"
-                      : isKnown
-                      ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 hover:bg-cyan-500/30"
-                      : "bg-slate-800 text-slate-300 border border-slate-700"
+                  className={`mx-0.5 inline-flex items-center rounded-md px-1.5 py-px align-baseline font-mono text-[11px] transition-colors duration-300 ${
+                    on
+                      ? "bg-accent text-paper"
+                      : known
+                        ? "bg-accent-soft text-accent hover:bg-accent hover:text-paper"
+                        : "bg-paper-deep text-ink-muted"
                   }`}
                 >
-                  [{cid}]
+                  {cid}
                 </button>
               );
             })}
           </span>
         );
       }
-      // Render lightweight **bold** and `code` markdown emitted by the model without injecting HTML.
       const segs = part.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
       return (
         <span key={idx}>
           {segs.map((seg, j) =>
             /^\*\*[^*]+\*\*$/.test(seg) ? (
-              <strong key={j} className="font-semibold text-slate-50">
+              <strong key={j} className="font-semibold text-ink">
                 {seg.slice(2, -2)}
               </strong>
             ) : /^`[^`]+`$/.test(seg) ? (
-              <code key={j} className="rounded bg-slate-800/80 px-1 py-0.5 font-mono text-[0.85em] text-amber-200">
+              <code key={j} className="rounded bg-paper-deep px-1 py-0.5 font-mono text-[0.85em] text-ink">
                 {seg.slice(1, -1)}
               </code>
             ) : (
               <span key={j}>{seg}</span>
-            )
+            ),
           )}
         </span>
       );
@@ -187,167 +251,116 @@ export default function RagConsole() {
   };
 
   const latestEval = evaluations?.latest ?? null;
+  const ok = health?.status === "ok";
+  const maxRrf = result ? Math.max(...result.chunks.map((c) => c.rrf_score), 1e-9) : 1;
+  const maxBm25 = result ? Math.max(...result.chunks.map((c) => c.bm25_score), 1e-9) : 1;
+
+  const fade = (delay = 0) =>
+    reduce
+      ? {}
+      : { initial: { opacity: 0, y: 16 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.8, ease: EASE, delay } };
 
   return (
-    <div className="min-h-screen bg-[#070b14] text-slate-100">
-      {/* Top Enterprise Status Bar */}
-      <header className="sticky top-0 z-20 border-b border-slate-800/80 bg-[#0b1120]/90 backdrop-blur-md">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-6 py-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500/20 to-indigo-500/20 border border-cyan-500/30">
-              <Layers className="h-5 w-5 text-cyan-400" />
-            </div>
-            <div>
-              <h1 className="text-base font-semibold tracking-tight text-white">
-                Enterprise Hybrid RAG &amp; LLMOps Console
-              </h1>
-              <p className="text-xs text-slate-400">
-                GCP Firestore Vector Search (COSINE) + Okapi BM25 + RRF · Vertex AI{" "}
-                <span className="text-cyan-300 font-mono">
-                  {health?.model ?? "gemini-3.8-flash"}
-                </span>
-              </p>
-            </div>
+    <div className="min-h-screen">
+      {/* ---------------------------------------------------------------- header */}
+      <header className="sticky top-0 z-30 border-b border-line bg-paper/85 backdrop-blur-md">
+        <div className="mx-auto flex h-16 max-w-[1280px] items-center justify-between gap-4 px-5 sm:px-8">
+          <div className="flex min-w-0 items-baseline gap-3">
+            <h1 className="truncate text-[15px] font-medium tracking-tight">
+              Hybrid RAG <span className="font-serif text-lg italic text-accent">&amp;</span> LLMOps Console
+            </h1>
+            <span className="hidden font-mono text-[11px] text-ink-muted md:inline">{health?.model ?? "gemini-3.8-flash"}</span>
           </div>
-
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            <span
-              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 font-medium border ${
-                health?.status === "ok"
-                  ? "bg-emerald-500/10 text-emerald-300 border-emerald-500/30"
-                  : "bg-amber-500/10 text-amber-300 border-amber-500/30"
-              }`}
+          <div className="flex items-center gap-4 text-xs">
+            <span className="hidden items-center gap-2 text-ink-muted sm:inline-flex">
+              <span className="relative flex h-2 w-2">
+                {ok ? <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-ok/50" /> : null}
+                <span className={`relative inline-flex h-2 w-2 rounded-full ${ok ? "bg-ok" : "bg-warn"}`} />
+              </span>
+              {ok ? "Private Cloud Run · OIDC" : "Connecting…"}
+            </span>
+            <a
+              href={REPO}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-full border border-line-strong px-3 py-1.5 text-ink transition-colors hover:border-ink"
             >
-              <span
-                className={`h-2 w-2 rounded-full ${
-                  health?.status === "ok" ? "bg-emerald-400" : "bg-amber-400"
-                }`}
-              />
-              {health?.status === "ok" ? "Private Cloud Run Connected (OIDC)" : "Connecting..."}
-            </span>
-
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-cyan-500/30 bg-cyan-500/10 px-3 py-1 font-medium text-cyan-300">
-              <DollarSign className="h-3.5 w-3.5" />
-              $0.00 Idle Cost Policy
-            </span>
-
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-indigo-500/30 bg-indigo-500/10 px-3 py-1 font-medium text-indigo-300">
-              <Lock className="h-3.5 w-3.5" />
-              Zero Browser GCP Creds
-            </span>
+              <Github className="h-3.5 w-3.5" /> Source
+            </a>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl space-y-6 px-6 py-6">
-        {bootstrapError && (
-          <div className="flex items-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-            <AlertTriangle className="h-4 w-4 shrink-0" />
-            <span>{bootstrapError}</span>
-          </div>
-        )}
-
-        {/* Top KPI Strip */}
-        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="rounded-xl border border-slate-800 bg-[#0d1424] p-4">
-            <div className="flex items-center justify-between text-xs text-slate-400">
-              <span>Indexed Technical Corpus</span>
-              <Database className="h-4 w-4 text-cyan-400" />
-            </div>
-            <div className="mt-2 text-2xl font-bold text-white">
-              {corpus ? `${corpus.document_count} Docs` : "—"}
-            </div>
-            <div className="mt-1 text-xs text-slate-400">
-              {corpus
-                ? `${corpus.total_chunks} chunks · ${corpus.embedding_dimension}d (${corpus.database})`
-                : "Loading Firestore index..."}
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-slate-800 bg-[#0d1424] p-4">
-            <div className="flex items-center justify-between text-xs text-slate-400">
-              <span>LLMOps Quality Gate</span>
-              <ShieldCheck className="h-4 w-4 text-emerald-400" />
-            </div>
-            <div className="mt-2 flex items-center gap-2">
-              {latestEval ? (
-                <span
-                  className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-0.5 text-lg font-bold ${
-                    latestEval.gate_passed
-                      ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30"
-                      : "bg-rose-500/15 text-rose-300 border border-rose-500/30"
-                  }`}
-                >
-                  {latestEval.gate_passed ? (
-                    <CheckCircle2 className="h-4 w-4" />
-                  ) : (
-                    <XCircle className="h-4 w-4" />
-                  )}
-                  {latestEval.gate_passed ? "PASS" : "FAIL"}
-                </span>
-              ) : (
-                <span className="text-2xl font-bold text-slate-500">—</span>
-              )}
-            </div>
-            <div className="mt-1 text-xs text-slate-400">
-              {latestEval
-                ? `${latestEval.summary.total_cases} golden cases · ${latestEval.run_id}`
-                : "No persisted evaluation runs yet"}
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-slate-800 bg-[#0d1424] p-4">
-            <div className="flex items-center justify-between text-xs text-slate-400">
-              <span>Hallucination Rate (Gate &le; 10%)</span>
-              <Activity className="h-4 w-4 text-indigo-400" />
-            </div>
-            <div className="mt-2 text-2xl font-bold text-white">
-              {latestEval
-                ? `${(latestEval.summary.hallucination_rate * 100).toFixed(1)}%`
-                : "—"}
-            </div>
-            <div className="mt-1 text-xs text-slate-400">
-              {latestEval
-                ? `Context Precision@K: ${(latestEval.summary.context_precision * 100).toFixed(1)}%`
-                : "Awaiting eval telemetry"}
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-slate-800 bg-[#0d1424] p-4">
-            <div className="flex items-center justify-between text-xs text-slate-400">
-              <span>Avg Cost / Query (Gate &le; $0.005)</span>
-              <DollarSign className="h-4 w-4 text-emerald-400" />
-            </div>
-            <div className="mt-2 font-mono text-2xl font-bold text-emerald-300">
-              {latestEval
-                ? `$${latestEval.summary.avg_cost_per_query_usd.toFixed(6)}`
-                : "—"}
-            </div>
-            <div className="mt-1 text-xs text-slate-400">
-              {latestEval
-                ? `Avg Latency: ${latestEval.summary.avg_latency_ms.toFixed(0)} ms`
-                : "FinOps Cloud Logging enabled"}
-            </div>
-          </div>
+      <main className="mx-auto max-w-[1280px] px-5 pb-24 sm:px-8">
+        {/* ---------------------------------------------------------------- intro */}
+        <section className="grid grid-cols-12 gap-6 pb-10 pt-12 md:pt-16">
+          <motion.div {...fade()} className="col-span-12 lg:col-span-8">
+            <p className="eyebrow">Firestore Vector Search · Okapi BM25 · Reciprocal Rank Fusion</p>
+            <h2 className="mt-4 text-balance text-4xl font-medium leading-[1.02] tracking-[-0.035em] md:text-6xl">
+              Answers grounded in your corpus — <span className="font-serif italic text-accent">or none at all.</span>
+            </h2>
+          </motion.div>
+          <motion.p {...fade(0.1)} className="col-span-12 self-end text-pretty text-[15px] leading-relaxed text-ink-muted lg:col-span-4">
+            Every answer cites the exact chunks it used. Every release must pass a golden-dataset gate on hallucination,
+            precision and cost before it ships.
+          </motion.p>
         </section>
 
-        {/* Main Workspace: Interactive Query Console + Live Telemetry */}
-        <section className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          {/* Left 2 Columns: Query Input, Answer, Retrieved Chunks */}
-          <div className="space-y-6 lg:col-span-2">
-            <div className="rounded-2xl border border-slate-800 bg-[#0d1424] p-5">
-              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-                <h2 className="flex items-center gap-2 text-sm font-semibold text-white">
-                  <Search className="h-4 w-4 text-cyan-400" />
-                  Interactive Hybrid RAG Query Console
-                </h2>
-                <span className="text-xs text-slate-400">
-                  1-click golden &amp; adversarial samples
-                </span>
+        {bootstrapError ? (
+          <div className="mb-6 flex items-center gap-2 rounded-xl border border-warn/40 bg-warn-soft px-4 py-3 text-sm text-warn">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            {bootstrapError}
+          </div>
+        ) : null}
+
+        {/* ---------------------------------------------------------------- KPIs */}
+        <section data-demo="kpis" className="grid grid-cols-2 border-y border-line lg:grid-cols-4">
+          {[
+            {
+              label: "Indexed corpus",
+              value: corpus ? `${corpus.document_count} Docs` : "—",
+              sub: corpus ? `${corpus.total_chunks} chunks · ${corpus.embedding_dimension}d` : "Loading index…",
+            },
+            {
+              label: "LLMOps quality gate",
+              value: latestEval ? (latestEval.gate_passed ? "PASS" : "FAIL") : "—",
+              sub: latestEval ? `${latestEval.summary.total_cases} golden cases` : "No runs yet",
+              tone: latestEval ? (latestEval.gate_passed ? "text-ok" : "text-bad") : "",
+            },
+            {
+              label: "Hallucination rate · gate ≤ 10%",
+              value: latestEval ? `${(latestEval.summary.hallucination_rate * 100).toFixed(1)}%` : "—",
+              sub: latestEval ? `Precision@K ${(latestEval.summary.context_precision * 100).toFixed(1)}%` : "Awaiting telemetry",
+            },
+            {
+              label: "Avg cost / query · gate ≤ $0.005",
+              value: latestEval ? `$${latestEval.summary.avg_cost_per_query_usd.toFixed(5)}` : "—",
+              sub: latestEval ? `Avg latency ${latestEval.summary.avg_latency_ms.toFixed(0)} ms` : "FinOps logging on",
+            },
+          ].map((k, i) => (
+            <motion.div
+              key={k.label}
+              {...fade(0.15 + i * 0.06)}
+              className={`px-1 py-6 sm:px-5 ${i > 0 ? "lg:border-l" : ""} ${i % 2 === 1 ? "border-l lg:border-l" : ""} ${i > 1 ? "border-t lg:border-t-0" : ""} border-line`}
+            >
+              <p className="eyebrow !text-[10px]">{k.label}</p>
+              <p className={`mt-3 font-serif text-4xl leading-none md:text-5xl ${k.tone ?? ""}`}>{k.value}</p>
+              <p className="mt-2 font-mono text-[11px] text-ink-muted">{k.sub}</p>
+            </motion.div>
+          ))}
+        </section>
+
+        {/* ---------------------------------------------------------------- workspace */}
+        <section className="mt-10 grid grid-cols-1 gap-6 lg:grid-cols-12">
+          <div className="space-y-6 lg:col-span-8">
+            {/* composer */}
+            <motion.div {...fade(0.2)} className="card p-5 sm:p-6">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <h3 className="text-lg font-medium tracking-tight">Ask the corpus</h3>
+                <span className="eyebrow">Golden & adversarial samples</span>
               </div>
 
-              {/* Sample Query Chips */}
-              <div className="mb-4 flex flex-wrap gap-2">
+              <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {SAMPLE_QUERIES.map((sq) => (
                   <button
                     key={sq.label}
@@ -356,411 +369,389 @@ export default function RagConsole() {
                       setQueryInput(sq.query);
                       void executeQuery(sq.query);
                     }}
-                    className="group inline-flex items-center gap-1.5 rounded-lg border border-slate-700/80 bg-slate-900/70 px-3 py-1.5 text-xs text-slate-200 transition hover:border-cyan-500/60 hover:bg-slate-800"
+                    className="group flex items-center justify-between gap-3 rounded-xl border border-line bg-paper/60 px-3.5 py-3 text-left transition-all duration-300 hover:-translate-y-px hover:border-ink"
                   >
-                    <span className="rounded bg-cyan-500/15 px-1.5 py-0.5 font-mono text-[10px] text-cyan-300">
-                      {sq.tag}
+                    <span className="min-w-0">
+                      <span className="block font-mono text-[10px] uppercase tracking-wider text-accent">{sq.tag}</span>
+                      <span className="mt-0.5 block truncate text-sm text-ink">{sq.label}</span>
                     </span>
-                    <span>{sq.label}</span>
+                    <ArrowRight className="h-4 w-4 shrink-0 text-ink-faint transition-all duration-500 ease-[var(--ease-expo)] group-hover:translate-x-0.5 group-hover:text-ink" />
                   </button>
                 ))}
               </div>
 
-              {/* Query Textarea & Mode Controls */}
-              <div className="space-y-3">
+              <div className="mt-4 rounded-xl border border-line bg-paper/60 focus-within:border-ink">
                 <textarea
                   value={queryInput}
                   onChange={(e) => setQueryInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void executeQuery();
+                  }}
                   rows={3}
-                  placeholder="Ask an enterprise architecture, IAM, FinOps, or SLA question..."
-                  className="w-full rounded-xl border border-slate-700/80 bg-[#070b14] px-4 py-3 text-sm text-slate-100 placeholder:text-slate-500 focus:border-cyan-500 focus:outline-none"
+                  placeholder="Ask an architecture, IAM, FinOps or SLA question…"
+                  className="w-full resize-none bg-transparent px-4 pt-3.5 text-[15px] leading-relaxed text-ink placeholder:text-ink-faint focus:outline-none"
                 />
-
-                <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-3 py-2.5">
                   <div className="flex flex-wrap items-center gap-2">
-                    {(Object.keys(MODE_WEIGHTS) as RetrievalMode[]).map((m) => (
-                      <button
-                        key={m}
-                        type="button"
-                        onClick={() => setMode(m)}
-                        className={`rounded-lg px-3 py-1.5 text-xs font-medium transition border ${
-                          mode === m
-                            ? "border-cyan-400/70 bg-cyan-500/20 text-cyan-200"
-                            : "border-slate-700 bg-slate-900/60 text-slate-400 hover:text-slate-200"
-                        }`}
-                      >
-                        {m === "hybrid"
-                          ? "Hybrid RRF (0.6/0.4)"
-                          : m === "vector"
-                          ? "Vector Only"
-                          : "BM25 Lexical"}
-                      </button>
-                    ))}
-
-                    <label className="ml-1 inline-flex items-center gap-1.5 text-xs text-slate-400">
-                      Top-K:
-                      <select
-                        value={topK}
-                        onChange={(e) => setTopK(Number(e.target.value))}
-                        className="rounded-md border border-slate-700 bg-[#070b14] px-2 py-1 text-xs text-slate-200"
-                      >
-                        <option value={3}>3</option>
-                        <option value={5}>5</option>
-                        <option value={8}>8</option>
-                      </select>
-                    </label>
+                    <Segmented
+                      id="mode"
+                      value={mode}
+                      onChange={setMode}
+                      options={(Object.keys(MODE_WEIGHTS) as RetrievalMode[]).map((m) => ({ value: m, label: MODE_WEIGHTS[m].short }))}
+                    />
+                    <Segmented
+                      id="topk"
+                      value={topK}
+                      onChange={setTopK}
+                      options={[3, 5, 8].map((n) => ({ value: n, label: `k=${n}` }))}
+                    />
                   </div>
-
                   <button
                     type="button"
                     disabled={loadingQuery}
                     onClick={() => void executeQuery()}
-                    className="inline-flex items-center gap-2 rounded-xl bg-cyan-500 px-5 py-2 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="group inline-flex items-center gap-2 rounded-full bg-ink px-5 py-2.5 text-sm font-medium text-paper transition-transform duration-300 hover:-translate-y-px disabled:cursor-wait disabled:opacity-70"
                   >
-                    <Sparkles className="h-4 w-4" />
-                    {loadingQuery ? "Running Hybrid Search..." : "Run Hybrid RAG"}
+                    {loadingQuery ? "Retrieving…" : "Run Hybrid RAG"}
+                    <CornerDownLeft className="h-3.5 w-3.5 opacity-70" />
                   </button>
                 </div>
               </div>
 
-              {queryError && (
-                <div className="mt-4 rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-xs text-rose-200">
-                  {queryError}
-                </div>
-              )}
-            </div>
+              <AnimatePresence>
+                {loadingQuery ? (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.5, ease: EASE }}
+                    className="overflow-hidden"
+                  >
+                    <div className="pt-5">
+                      <Pipeline running={loadingQuery} />
+                    </div>
+                  </motion.div>
+                ) : null}
+              </AnimatePresence>
 
-            {/* Grounded Answer Card */}
-            {result && (
-              <div className="rounded-2xl border border-slate-800 bg-[#0d1424] p-5 space-y-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="h-4 w-4 text-cyan-400" />
-                    <h3 className="text-sm font-semibold text-white">
-                      Grounded Synthesis ({result.telemetry.model})
+              {queryError ? (
+                <div className="mt-4 rounded-xl border border-bad/30 bg-bad-soft px-4 py-3 text-sm text-bad">{queryError}</div>
+              ) : null}
+            </motion.div>
+
+            {/* answer */}
+            <AnimatePresence mode="wait">
+              {result ? (
+                <motion.div
+                  key={result.trace_id}
+                  data-demo="answer"
+                  initial={{ opacity: 0, y: 24 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -12 }}
+                  transition={{ duration: 0.7, ease: EASE }}
+                  className="card overflow-hidden"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-4 sm:px-6">
+                    <h3 className="text-lg font-medium tracking-tight">
+                      Grounded Synthesis <span className="font-mono text-xs text-ink-muted">· {result.telemetry.model}</span>
                     </h3>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs">
                     {result.abstained ? (
-                      <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/15 px-2.5 py-0.5 font-medium text-amber-300">
-                        <ShieldCheck className="h-3.5 w-3.5" />
-                        Hallucination Guard: Abstained
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-warn-soft px-3 py-1 text-xs font-medium text-warn">
+                        <ShieldCheck className="h-3.5 w-3.5" /> Hallucination guard · abstained
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/15 px-2.5 py-0.5 font-medium text-emerald-300">
-                        <CheckCircle2 className="h-3.5 w-3.5" />
-                        {result.cited_chunk_ids.length} Inline Citations Verified
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-ok-soft px-3 py-1 text-xs font-medium text-ok">
+                        <Check className="h-3.5 w-3.5" /> {result.cited_chunk_ids.length} {result.cited_chunk_ids.length === 1 ? "citation" : "citations"} verified
                       </span>
                     )}
                   </div>
-                </div>
 
-                <div className="rounded-xl border border-slate-800 bg-[#070b14] p-4 text-sm leading-relaxed text-slate-200 whitespace-pre-wrap">
-                  {renderAnswerWithCitations(result.answer, result.cited_chunk_ids)}
-                </div>
-
-                {/* Retrieved Chunks with Vector + BM25 + RRF Scores */}
-                <div>
-                  <h4 className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-slate-400">
-                    Retrieved Chunks &amp; RRF Fusion Breakdown (k={result.retrieval_config.rrf_k})
-                  </h4>
-                  <div className="space-y-2.5">
-                    {result.chunks.map((chunk, idx) => {
-                      const isHighlighted = highlightedChunkId === chunk.chunk_id;
-                      const isCited = result.cited_chunk_ids.includes(chunk.chunk_id);
-                      return (
-                        <div
-                          key={chunk.chunk_id}
-                          className={`rounded-xl border p-3.5 transition ${
-                            isHighlighted
-                              ? "border-cyan-400 bg-cyan-500/10"
-                              : isCited
-                              ? "border-slate-700 bg-[#0a101e]"
-                              : "border-slate-800/80 bg-[#080d18]"
-                          }`}
-                        >
-                          <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
-                            <div className="flex items-center gap-2">
-                              <span className="rounded bg-slate-800 px-1.5 py-0.5 font-mono text-[11px] text-slate-300">
-                                #{idx + 1}
-                              </span>
-                              <span className="font-mono text-xs font-semibold text-cyan-300">
-                                [{chunk.chunk_id}]
-                              </span>
-                              <span className="text-xs text-slate-300 font-medium">
-                                {chunk.section}
-                              </span>
-                            </div>
-                            <div className="flex flex-wrap items-center gap-2 font-mono text-[11px]">
-                              <span className="rounded bg-indigo-500/15 px-2 py-0.5 text-indigo-300">
-                                Vec: {chunk.vector_score !== null ? chunk.vector_score.toFixed(3) : "—"}
-                              </span>
-                              <span className="rounded bg-amber-500/15 px-2 py-0.5 text-amber-300">
-                                BM25: {chunk.bm25_score.toFixed(2)}
-                              </span>
-                              <span className="rounded bg-cyan-500/20 px-2 py-0.5 font-semibold text-cyan-200">
-                                RRF: {chunk.rrf_score.toFixed(4)}
-                              </span>
-                            </div>
-                          </div>
-                          <p className="text-xs leading-relaxed text-slate-400 line-clamp-3">
-                            {chunk.content}
-                          </p>
-                        </div>
-                      );
-                    })}
+                  <div className="whitespace-pre-wrap px-5 py-5 text-[15px] leading-[1.75] text-ink-soft sm:px-6">
+                    {renderAnswerWithCitations(result.answer, result.cited_chunk_ids)}
                   </div>
-                </div>
-              </div>
-            )}
+
+                  <div className="border-t border-line px-5 py-5 sm:px-6">
+                    <div className="mb-3 flex items-baseline justify-between">
+                      <p className="eyebrow">Retrieved chunks · RRF fusion (k={result.retrieval_config.rrf_k})</p>
+                      <p className="hidden font-mono text-[10px] text-ink-faint sm:block">vector · bm25 · rrf</p>
+                    </div>
+                    <ol className="divide-y divide-line">
+                      {result.chunks.map((chunk, idx) => {
+                        const on = highlightedChunkId === chunk.chunk_id;
+                        const cited = result.cited_chunk_ids.includes(chunk.chunk_id);
+                        return (
+                          <motion.li
+                            key={chunk.chunk_id}
+                            layout
+                            initial={{ opacity: 0, x: -8 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ duration: 0.6, ease: EASE, delay: 0.1 + idx * 0.05 }}
+                            onClick={() => setHighlightedChunkId(chunk.chunk_id)}
+                            className={`grid cursor-pointer grid-cols-12 gap-3 rounded-lg py-3 transition-colors duration-300 ${
+                              on ? "bg-accent-soft/60 px-3" : "px-0 hover:bg-paper/70"
+                            }`}
+                          >
+                            <div className="col-span-12 sm:col-span-7">
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono text-[11px] text-ink-faint">{String(idx + 1).padStart(2, "0")}</span>
+                                <span className={`font-mono text-xs ${cited ? "text-accent" : "text-ink-muted"}`}>{chunk.chunk_id}</span>
+                                <span className="truncate text-xs text-ink-muted">{chunk.section}</span>
+                              </div>
+                              <p className="mt-1.5 line-clamp-2 text-[13px] leading-relaxed text-ink-soft">{chunk.content}</p>
+                            </div>
+                            <div className="col-span-12 grid grid-cols-3 gap-3 self-center sm:col-span-5">
+                              {[
+                                { k: "vec", v: chunk.vector_score ?? 0, label: chunk.vector_score !== null ? chunk.vector_score.toFixed(3) : "—", tone: "muted" as const },
+                                { k: "bm25", v: chunk.bm25_score / maxBm25, label: chunk.bm25_score.toFixed(2), tone: "muted" as const },
+                                { k: "rrf", v: chunk.rrf_score / maxRrf, label: chunk.rrf_score.toFixed(4), tone: "accent" as const },
+                              ].map((s) => (
+                                <div key={s.k}>
+                                  <div className="mb-1 flex justify-between font-mono text-[10px] text-ink-muted">
+                                    <span>{s.k}</span>
+                                    <span className="text-ink">{s.label}</span>
+                                  </div>
+                                  <Bar value={s.v} tone={s.tone} delay={0.2 + idx * 0.05} />
+                                </div>
+                              ))}
+                            </div>
+                          </motion.li>
+                        );
+                      })}
+                    </ol>
+                  </div>
+                </motion.div>
+              ) : null}
+            </AnimatePresence>
           </div>
 
-          {/* Right Column: Live Cost/Latency Telemetry + Security Posture */}
-          <div className="space-y-6">
-            {/* Live Per-Query FinOps & Latency Telemetry */}
-            <div className="rounded-2xl border border-slate-800 bg-[#0d1424] p-5">
-              <h3 className="flex items-center gap-2 text-sm font-semibold text-white mb-3">
-                <Cpu className="h-4 w-4 text-emerald-400" />
-                Live Query FinOps &amp; Latency Telemetry
-              </h3>
-
+          {/* ---------------------------------------------------------------- side */}
+          <aside className="space-y-6 lg:col-span-4">
+            <motion.div {...fade(0.25)} data-demo="telemetry" className="card p-5 sm:p-6">
+              <p className="eyebrow">Live Query FinOps &amp; Latency</p>
               {result ? (
-                <div className="space-y-4 text-xs">
-                  <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3">
-                    <div className="text-emerald-200/80">Estimated Query Cost (USD)</div>
-                    <div className="mt-1 font-mono text-xl font-bold text-emerald-300">
-                      ${result.telemetry.cost.estimated_cost_usd.toFixed(6)}
-                    </div>
-                    <div className="mt-1 text-[11px] text-emerald-200/70">
-                      Prompt: {result.telemetry.cost.prompt_tokens} tok · Output:{" "}
-                      {result.telemetry.cost.completion_tokens} tok · Embed:{" "}
-                      {result.telemetry.cost.embedding_tokens} tok
-                    </div>
-                  </div>
+                <div className="mt-4">
+                  <p className="font-serif text-5xl leading-none">${result.telemetry.cost.estimated_cost_usd.toFixed(6)}</p>
+                  <p className="mt-2 font-mono text-[11px] text-ink-muted">
+                    {result.telemetry.cost.prompt_tokens} in · {result.telemetry.cost.completion_tokens} out ·{" "}
+                    {result.telemetry.cost.embedding_tokens} embed tokens
+                  </p>
 
-                  <div className="space-y-2">
-                    <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                      Latency Breakdown ({result.telemetry.latency_ms.total_ms.toFixed(0)} ms)
-                    </div>
-                    {[
-                      { label: "Vertex AI Embedding", ms: result.telemetry.latency_ms.embedding_ms },
-                      {
-                        label: "Firestore Vector Search",
-                        ms: result.telemetry.latency_ms.vector_search_ms,
-                      },
-                      { label: "Okapi BM25 Lexical", ms: result.telemetry.latency_ms.lexical_search_ms },
-                      {
-                        label: "Gemini 3.8 Flash Synthesis",
-                        ms: result.telemetry.latency_ms.generation_ms,
-                      },
-                    ].map((row) => (
-                      <div key={row.label} className="flex items-center justify-between text-slate-300">
-                        <span>{row.label}</span>
-                        <span className="font-mono text-cyan-300">{row.ms.toFixed(1)} ms</span>
+                  {(() => {
+                    const l = result.telemetry.latency_ms;
+                    const rows = [
+                      { label: "Vertex AI embedding", ms: l.embedding_ms, c: "bg-ink-faint" },
+                      { label: "Firestore vector search", ms: l.vector_search_ms, c: "bg-ink-muted" },
+                      { label: "Okapi BM25 lexical", ms: l.lexical_search_ms, c: "bg-line-strong" },
+                      { label: "Gemini synthesis", ms: l.generation_ms, c: "bg-accent" },
+                    ];
+                    const total = Math.max(rows.reduce((a, r) => a + r.ms, 0), 1);
+                    return (
+                      <div className="mt-6">
+                        <div className="flex items-baseline justify-between">
+                          <p className="text-sm font-medium">Latency</p>
+                          <p className="font-mono text-xs">{l.total_ms.toFixed(0)} ms</p>
+                        </div>
+                        <div className="mt-2 flex h-2 overflow-hidden rounded-full bg-paper-deep">
+                          {rows.map((r, i) => (
+                            <motion.div
+                              key={r.label}
+                              className={`h-full ${r.c}`}
+                              initial={{ width: 0 }}
+                              animate={{ width: `${(r.ms / total) * 100}%` }}
+                              transition={{ duration: 0.9, ease: EASE, delay: 0.1 + i * 0.08 }}
+                            />
+                          ))}
+                        </div>
+                        <ul className="mt-3 space-y-1.5">
+                          {rows.map((r) => (
+                            <li key={r.label} className="flex items-center justify-between text-xs text-ink-soft">
+                              <span className="flex items-center gap-2">
+                                <span className={`h-2 w-2 rounded-full ${r.c}`} />
+                                {r.label}
+                              </span>
+                              <span className="font-mono text-ink">{r.ms.toFixed(1)} ms</span>
+                            </li>
+                          ))}
+                        </ul>
                       </div>
-                    ))}
-                  </div>
+                    );
+                  })()}
 
-                  <div className="rounded-lg border border-slate-800 bg-[#070b14] p-2.5 font-mono text-[11px] text-slate-400">
-                    <div>Cloud Logging Event: {result.telemetry.cloud_logging_event}</div>
-                    <div className="truncate text-slate-300">Trace: {result.trace_id}</div>
+                  <div className="mt-5 rounded-lg bg-paper-deep/70 px-3 py-2.5 font-mono text-[10.5px] leading-relaxed text-ink-muted">
+                    <div>event · {result.telemetry.cloud_logging_event}</div>
+                    <div className="truncate">trace · {result.trace_id}</div>
                   </div>
                 </div>
               ) : (
-                <p className="text-xs text-slate-400 leading-relaxed">
-                  Execute a Hybrid RAG query to inspect live per-query token usage, exact USD cost
-                  calculation, Firestore Vector vs BM25 latency breakdown, and Cloud Logging trace
-                  correlation.
+                <p className="mt-3 text-sm leading-relaxed text-ink-muted">
+                  Run a query to see per-query token usage, exact USD cost, the latency split between embedding, vector
+                  search, BM25 and generation, and the Cloud Logging trace.
                 </p>
               )}
-            </div>
+            </motion.div>
 
-            {/* Zero-Idle-Cost & Private IAM Security Posture */}
-            <div className="rounded-2xl border border-slate-800 bg-[#0d1424] p-5 space-y-3">
-              <h3 className="flex items-center gap-2 text-sm font-semibold text-white">
-                <Lock className="h-4 w-4 text-indigo-400" />
-                Zero-Idle-Cost &amp; Private IAM Posture
-              </h3>
-              <ul className="space-y-2 text-xs text-slate-300">
-                <li className="flex items-start gap-2">
-                  <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-400" />
-                  <span>
-                    <strong>Firestore Vector Search</strong> (<code>hybrid-rag-db</code>, 768d FLAT
-                    COSINE) — $0.00 idle cost (no always-on Vertex Vector Endpoints).
-                  </span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-400" />
-                  <span>
-                    <strong>Private Cloud Run v2 API</strong> — <code>min_instance_count=0</code>,{" "}
-                    <code>max_instance_count=2</code>; unauth requests return HTTP 403.
-                  </span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-400" />
-                  <span>
-                    <strong>Server-Side OIDC BFF</strong> — Vercel API routes mint short-lived
-                    Google ID tokens via scoped <code>rag-vercel-bff-invoker</code> SA.
-                  </span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-400" />
-                  <span>
-                    <strong>Cloud Workflows + Cloud Run Job</strong> — Serverless asynchronous GCS
-                    ingestion with pre-embedding PII redaction.
-                  </span>
-                </li>
-              </ul>
-            </div>
-
-            {/* Indexed Corpus Summary */}
-            <div className="rounded-2xl border border-slate-800 bg-[#0d1424] p-5 space-y-3">
-              <h3 className="flex items-center gap-2 text-sm font-semibold text-white">
-                <FileText className="h-4 w-4 text-cyan-400" />
-                Indexed Corpus Inventory ({corpus?.document_count ?? 0})
-              </h3>
-              <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                {corpus?.documents.map((doc) => (
-                  <div
-                    key={doc.doc_id}
-                    className="rounded-lg border border-slate-800/90 bg-[#070b14] px-3 py-2 text-xs"
-                  >
-                    <div className="font-medium text-slate-200 truncate">{doc.title}</div>
-                    <div className="mt-0.5 flex items-center justify-between font-mono text-[11px] text-slate-400">
-                      <span>{doc.doc_id}</span>
-                      <span>{doc.chunk_count} chunks</span>
-                    </div>
-                  </div>
+            <motion.div {...fade(0.3)} className="card p-5 sm:p-6">
+              <p className="eyebrow">Zero idle cost · private IAM</p>
+              <ul className="mt-4 divide-y divide-line">
+                {[
+                  ["Firestore Vector Search", "768d flat COSINE index — no always-on vector endpoint, $0 idle."],
+                  ["Private Cloud Run v2", "min 0 / max 2 instances; unauthenticated calls get HTTP 403."],
+                  ["Server-side OIDC BFF", "Short-lived Google ID tokens minted per request by a scoped SA."],
+                  ["Workflows + Cloud Run Job", "Async GCS ingestion with PII redaction before embedding."],
+                ].map(([t, d]) => (
+                  <li key={t} className="py-3 first:pt-0 last:pb-0">
+                    <p className="flex items-center gap-2 text-sm font-medium">
+                      <Check className="h-3.5 w-3.5 text-ok" /> {t}
+                    </p>
+                    <p className="mt-1 pl-5.5 text-xs leading-relaxed text-ink-muted">{d}</p>
+                  </li>
                 ))}
-              </div>
-            </div>
-          </div>
+              </ul>
+            </motion.div>
+
+            <motion.div {...fade(0.35)} className="card p-5 sm:p-6">
+              <p className="eyebrow">Indexed corpus · {corpus?.document_count ?? 0} documents</p>
+              <ul className="mt-3 max-h-72 divide-y divide-line overflow-y-auto pr-1">
+                {corpus?.documents.map((doc) => (
+                  <li key={doc.doc_id} className="py-2.5">
+                    <p className="truncate text-[13px] text-ink">{doc.title}</p>
+                    <p className="mt-0.5 flex justify-between font-mono text-[10.5px] text-ink-muted">
+                      <span className="truncate">{doc.doc_id}</span>
+                      <span>{doc.chunk_count} chunks</span>
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </motion.div>
+          </aside>
         </section>
 
-        {/* Automated LLMOps Evaluation Gate Dashboard */}
-        <section className="rounded-2xl border border-slate-800 bg-[#0d1424] p-5 space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
+        {/* ---------------------------------------------------------------- gate */}
+        <section data-demo="gate" className="mt-16">
+          <div className="flex flex-wrap items-end justify-between gap-4 border-t border-ink pt-5">
             <div>
-              <h2 className="flex items-center gap-2 text-sm font-semibold text-white">
-                <ShieldCheck className="h-4 w-4 text-emerald-400" />
-                Automated LLMOps Pre-Deployment Quality Gate Report
-              </h2>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Live persisted golden-dataset evaluation from Firestore (<code>evaluation_runs</code>)
-                verifying Hallucination Rate, Context Precision@K, Abstention Accuracy, and FinOps Cost.
+              <p className="eyebrow">Pre-deployment quality gate</p>
+              <h3 className="mt-2 text-3xl font-medium tracking-tight md:text-4xl">
+                LLMOps evaluation <span className="font-serif italic text-accent">report</span>
+              </h3>
+              <p className="mt-2 max-w-2xl text-sm text-ink-muted">
+                Golden-dataset run persisted in Firestore (<code className="font-mono text-xs">evaluation_runs</code>):
+                hallucination, precision@K, recall, abstention and cost.
               </p>
             </div>
-            {latestEval && (
-              <div className="flex items-center gap-3 text-xs font-mono">
-                <span className="text-slate-400">Run: {latestEval.run_id}</span>
+            {latestEval ? (
+              <div className="flex items-center gap-3">
+                <span className="font-mono text-[11px] text-ink-muted">{latestEval.run_id}</span>
                 <span
-                  className={`rounded-full px-3 py-1 font-semibold border ${
-                    latestEval.gate_passed
-                      ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300"
-                      : "border-rose-500/40 bg-rose-500/15 text-rose-300"
+                  className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold ${
+                    latestEval.gate_passed ? "bg-ok text-paper" : "bg-bad text-paper"
                   }`}
                 >
-                  GATE: {latestEval.gate_passed ? "PASSED" : "FAILED"}
+                  {latestEval.gate_passed ? <Check className="h-3.5 w-3.5" /> : <X className="h-3.5 w-3.5" />}
+                  Gate {latestEval.gate_passed ? "passed" : "failed"}
                 </span>
               </div>
-            )}
+            ) : null}
           </div>
 
           {latestEval ? (
             <>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-5 text-xs">
-                <div className="rounded-xl border border-slate-800 bg-[#070b14] p-3">
-                  <div className="text-slate-400">Hallucination Rate</div>
-                  <div className="mt-1 font-mono text-lg font-bold text-emerald-300">
-                    {(latestEval.summary.hallucination_rate * 100).toFixed(1)}%
-                  </div>
-                  <div className="text-[11px] text-slate-500">
-                    Threshold &le; {(latestEval.thresholds.max_hallucination_rate * 100).toFixed(0)}%
-                  </div>
-                </div>
-                <div className="rounded-xl border border-slate-800 bg-[#070b14] p-3">
-                  <div className="text-slate-400">Context Precision@K</div>
-                  <div className="mt-1 font-mono text-lg font-bold text-cyan-300">
-                    {(latestEval.summary.context_precision * 100).toFixed(1)}%
-                  </div>
-                  <div className="text-[11px] text-slate-500">
-                    Threshold &ge; {(latestEval.thresholds.min_context_precision * 100).toFixed(0)}%
-                  </div>
-                </div>
-                <div className="rounded-xl border border-slate-800 bg-[#070b14] p-3">
-                  <div className="text-slate-400">Context Recall@K</div>
-                  <div className="mt-1 font-mono text-lg font-bold text-indigo-300">
-                    {(latestEval.summary.context_recall * 100).toFixed(1)}%
-                  </div>
-                  <div className="text-[11px] text-slate-500">Expected doc coverage</div>
-                </div>
-                <div className="rounded-xl border border-slate-800 bg-[#070b14] p-3">
-                  <div className="text-slate-400">Unanswerable Abstention</div>
-                  <div className="mt-1 font-mono text-lg font-bold text-amber-300">
-                    {(latestEval.summary.abstention_accuracy * 100).toFixed(0)}%
-                  </div>
-                  <div className="text-[11px] text-slate-500">
-                    {latestEval.summary.unanswerable_cases} negative probes
-                  </div>
-                </div>
-                <div className="rounded-xl border border-slate-800 bg-[#070b14] p-3">
-                  <div className="text-slate-400">Avg / P95 Cost (USD)</div>
-                  <div className="mt-1 font-mono text-lg font-bold text-emerald-300">
-                    ${latestEval.summary.avg_cost_per_query_usd.toFixed(5)}
-                  </div>
-                  <div className="text-[11px] text-slate-500">
-                    P95: ${latestEval.summary.p95_cost_per_query_usd.toFixed(5)}
-                  </div>
-                </div>
+              <div className="mt-8 grid grid-cols-2 gap-x-6 gap-y-8 md:grid-cols-5">
+                {[
+                  {
+                    l: "Hallucination rate",
+                    v: latestEval.summary.hallucination_rate,
+                    fmt: (x: number) => `${(x * 100).toFixed(1)}%`,
+                    t: `≤ ${(latestEval.thresholds.max_hallucination_rate * 100).toFixed(0)}%`,
+                    bar: latestEval.summary.hallucination_rate / Math.max(latestEval.thresholds.max_hallucination_rate, 1e-9),
+                  },
+                  {
+                    l: "Context precision@K",
+                    v: latestEval.summary.context_precision,
+                    fmt: (x: number) => `${(x * 100).toFixed(1)}%`,
+                    t: `≥ ${(latestEval.thresholds.min_context_precision * 100).toFixed(0)}%`,
+                    bar: latestEval.summary.context_precision,
+                  },
+                  {
+                    l: "Context recall@K",
+                    v: latestEval.summary.context_recall,
+                    fmt: (x: number) => `${(x * 100).toFixed(1)}%`,
+                    t: "expected doc coverage",
+                    bar: latestEval.summary.context_recall,
+                  },
+                  {
+                    l: "Abstention accuracy",
+                    v: latestEval.summary.abstention_accuracy,
+                    fmt: (x: number) => `${(x * 100).toFixed(0)}%`,
+                    t: `${latestEval.summary.unanswerable_cases} negative probes`,
+                    bar: latestEval.summary.abstention_accuracy,
+                  },
+                  {
+                    l: "Avg cost / query",
+                    v: latestEval.summary.avg_cost_per_query_usd,
+                    fmt: (x: number) => `$${x.toFixed(5)}`,
+                    t: `p95 $${latestEval.summary.p95_cost_per_query_usd.toFixed(5)}`,
+                    bar: latestEval.summary.avg_cost_per_query_usd / 0.005,
+                  },
+                ].map((m, i) => (
+                  <motion.div
+                    key={m.l}
+                    initial={reduce ? false : { opacity: 0, y: 16 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true }}
+                    transition={{ duration: 0.8, ease: EASE, delay: i * 0.06 }}
+                  >
+                    <p className="text-xs text-ink-muted">{m.l}</p>
+                    <p className="mt-2 font-serif text-4xl leading-none">{m.fmt(m.v)}</p>
+                    <div className="mt-3">
+                      <Bar value={m.bar} tone="ink" delay={0.2 + i * 0.06} />
+                    </div>
+                    <p className="mt-2 font-mono text-[10.5px] text-ink-muted">{m.t}</p>
+                  </motion.div>
+                ))}
               </div>
 
-              <div className="overflow-x-auto rounded-xl border border-slate-800">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-900/90 text-slate-400 uppercase text-[11px]">
-                    <tr>
-                      <th className="px-3 py-2.5">Case</th>
-                      <th className="px-3 py-2.5">Category</th>
-                      <th className="px-3 py-2.5">Query</th>
-                      <th className="px-3 py-2.5">Grounding</th>
-                      <th className="px-3 py-2.5">Precision</th>
-                      <th className="px-3 py-2.5">Cost (USD)</th>
-                      <th className="px-3 py-2.5">Latency</th>
+              <div className="card mt-10 overflow-x-auto">
+                <table className="w-full min-w-[760px] text-left text-[13px]">
+                  <thead>
+                    <tr className="border-b border-line">
+                      {["Case", "Category", "Query", "Grounding", "Precision", "Cost", "Latency"].map((h) => (
+                        <th key={h} className="eyebrow px-4 py-3 !text-[10px] font-normal">
+                          {h}
+                        </th>
+                      ))}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-800/80 bg-[#070b14]">
+                  <tbody className="divide-y divide-line">
                     {latestEval.cases.map((c) => (
-                      <tr key={c.case_id} className="hover:bg-slate-900/50">
-                        <td className="px-3 py-2 font-mono text-cyan-300 whitespace-nowrap">
-                          {c.case_id}
+                      <tr key={c.case_id} className="transition-colors hover:bg-paper/70">
+                        <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-ink">{c.case_id}</td>
+                        <td className="whitespace-nowrap px-4 py-3">
+                          <span className="rounded-full border border-line px-2 py-0.5 font-mono text-[10px] text-ink-muted">{c.category}</span>
                         </td>
-                        <td className="px-3 py-2 whitespace-nowrap">
-                          <span className="rounded bg-slate-800 px-2 py-0.5 font-mono text-[10px] text-slate-300">
-                            {c.category}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2 text-slate-300 max-w-md truncate" title={c.query}>
+                        <td className="max-w-md truncate px-4 py-3 text-ink-soft" title={c.query}>
                           {c.query}
                         </td>
-                        <td className="px-3 py-2 whitespace-nowrap">
+                        <td className="whitespace-nowrap px-4 py-3">
                           {c.hallucinated ? (
-                            <span className="text-rose-400 font-semibold">Hallucinated</span>
+                            <span className="inline-flex items-center gap-1.5 text-bad">
+                              <span className="h-1.5 w-1.5 rounded-full bg-bad" /> Hallucinated
+                            </span>
                           ) : c.unanswerable ? (
-                            <span className="text-amber-300 font-medium">Abstained OK</span>
+                            <span className="inline-flex items-center gap-1.5 text-warn">
+                              <span className="h-1.5 w-1.5 rounded-full bg-warn" /> Abstained OK
+                            </span>
                           ) : (
-                            <span className="text-emerald-400 font-medium">Grounded</span>
+                            <span className="inline-flex items-center gap-1.5 text-ok">
+                              <span className="h-1.5 w-1.5 rounded-full bg-ok" /> Grounded
+                            </span>
                           )}
                         </td>
-                        <td className="px-3 py-2 font-mono text-slate-300 whitespace-nowrap">
-                          {c.context_precision !== null
-                            ? `${(c.context_precision * 100).toFixed(0)}%`
-                            : "N/A"}
+                        <td className="whitespace-nowrap px-4 py-3 font-mono text-xs">
+                          {c.context_precision !== null ? `${(c.context_precision * 100).toFixed(0)}%` : "n/a"}
                         </td>
-                        <td className="px-3 py-2 font-mono text-emerald-300 whitespace-nowrap">
-                          ${c.cost_usd.toFixed(6)}
-                        </td>
-                        <td className="px-3 py-2 font-mono text-slate-400 whitespace-nowrap">
-                          {c.latency_ms.toFixed(0)} ms
-                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 font-mono text-xs">${c.cost_usd.toFixed(6)}</td>
+                        <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-ink-muted">{c.latency_ms.toFixed(0)} ms</td>
                       </tr>
                     ))}
                   </tbody>
@@ -768,12 +759,18 @@ export default function RagConsole() {
               </div>
             </>
           ) : (
-            <div className="rounded-xl border border-slate-800 bg-[#070b14] p-6 text-center text-xs text-slate-400">
-              No evaluation runs persisted yet. Run the Automated LLMOps Evaluator to populate this
-              dashboard.
+            <div className="card mt-8 p-8 text-center text-sm text-ink-muted">
+              No evaluation runs persisted yet. Run the automated LLMOps evaluator to populate this report.
             </div>
           )}
         </section>
+
+        <footer className="mt-20 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-6 font-mono text-[11px] text-ink-muted">
+          <span>Built by Daniel Tafur · AI Agent Engineer</span>
+          <a href="https://danieltafur.vercel.app" target="_blank" rel="noopener noreferrer" className="hover:text-ink">
+            danieltafur.vercel.app ↗
+          </a>
+        </footer>
       </main>
     </div>
   );
