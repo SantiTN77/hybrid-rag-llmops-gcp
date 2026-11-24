@@ -9,9 +9,12 @@ A production-grade, 100% serverless **Enterprise Hybrid RAG & Automated LLMOps**
 
 ## Demo
 
-[![Watch the narrated demo](docs/media/demo-poster.jpg)](https://github.com/SantiTN77/hybrid-rag-llmops-gcp/releases/download/v1.0.0/rag-demo.mp4)
+| English | Español |
+| --- | --- |
+| [![Watch the narrated demo](docs/media/demo-poster.jpg)](https://github.com/SantiTN77/hybrid-rag-llmops-gcp/releases/download/v1.1.0/rag-demo.mp4) | [![Ver la demo narrada](docs/media/demo-poster-es.jpg)](https://github.com/SantiTN77/hybrid-rag-llmops-gcp/releases/download/v1.1.0/rag-demo-es.mp4) |
+| **[▶ Narrated demo (EN)](https://github.com/SantiTN77/hybrid-rag-llmops-gcp/releases/download/v1.1.0/rag-demo.mp4)** | **[▶ Demo narrada (ES)](https://github.com/SantiTN77/hybrid-rag-llmops-gcp/releases/download/v1.1.0/rag-demo-es.mp4)** |
 
-**[▶ Watch the 1080p narrated demo](https://github.com/SantiTN77/hybrid-rag-llmops-gcp/releases/download/v1.0.0/rag-demo.mp4)** · **[Open the live app](https://hybrid-rag-llmops-gcp-web.vercel.app)**
+**[Open the live app](https://hybrid-rag-llmops-gcp-web.vercel.app)** — the UI is bilingual: switch **EN / ES** in the header, or open it directly in Spanish with [`?lang=es`](https://hybrid-rag-llmops-gcp-web.vercel.app/?lang=es).
 
 ## Live Production Deployment
 - **Vercel Operations Console (OIDC BFF)**: https://hybrid-rag-llmops-gcp-web.vercel.app
