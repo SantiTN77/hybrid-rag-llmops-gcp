@@ -4,51 +4,19 @@ import React, { useCallback, useEffect, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { AlertTriangle, ArrowRight, Check, CornerDownLeft, Github, ShieldCheck, X } from "lucide-react";
 import type { CorpusResponse, EvaluationsResponse, HealthResponse, QueryResponse } from "@/lib/types";
+import { SAMPLES, STRINGS, useLang, type Lang } from "@/lib/i18n";
 
 const EASE = [0.16, 1, 0.3, 1] as const;
 const REPO = "https://github.com/SantiTN77/hybrid-rag-llmops-gcp";
 
-interface SampleQuery {
-  label: string;
-  tag: string;
-  query: string;
-}
-
-const SAMPLE_QUERIES: SampleQuery[] = [
-  {
-    label: "Private IAM & BFF Auth",
-    tag: "Factual",
-    query:
-      "What HTTP status codes must a private Cloud Run endpoint return for unauthenticated direct requests, and which Service Account is allowed to invoke it?",
-  },
-  {
-    label: "SEV-1 Incident SLAs",
-    tag: "Numeric SLA",
-    query: "What are the MTTA, MTTM, and executive update intervals for a SEV-1 critical outage?",
-  },
-  {
-    label: "Firestore Vector vs Vertex + RRF",
-    tag: "Multi-Hop",
-    query:
-      "Why did Meridian choose Firestore Vector Search over Vertex AI Vector Search Endpoints, what RRF weights are used, and what are the three LLMOps quality gate thresholds?",
-  },
-  {
-    label: "AWS EKS Budget (Out-of-Scope)",
-    tag: "Hallucination Test",
-    query:
-      "What is Meridian's approved AWS EKS cluster auto-scaling budget and Amazon Bedrock Claude 3.7 pricing rate card?",
-  },
-];
-
 type RetrievalMode = "hybrid" | "vector" | "lexical";
 
-const MODE_WEIGHTS: Record<RetrievalMode, { vector: number; lexical: number; short: string }> = {
-  hybrid: { vector: 0.6, lexical: 0.4, short: "Hybrid RRF 0.6 / 0.4" },
-  vector: { vector: 1.0, lexical: 0.0, short: "Vector only" },
-  lexical: { vector: 0.0, lexical: 1.0, short: "BM25 only" },
+const MODE_WEIGHTS: Record<RetrievalMode, { vector: number; lexical: number }> = {
+  hybrid: { vector: 0.6, lexical: 0.4 },
+  vector: { vector: 1.0, lexical: 0.0 },
+  lexical: { vector: 0.0, lexical: 1.0 },
 };
 
-const PIPELINE = ["Embed query", "Firestore vector search", "BM25 lexical", "RRF fusion", "Gemini synthesis"];
 
 /* ------------------------------------------------------------------ primitives */
 
@@ -106,17 +74,17 @@ function Bar({ value, tone = "ink", delay = 0 }: { value: number; tone?: "ink" |
   );
 }
 
-function Pipeline({ running }: { running: boolean }) {
+function Pipeline({ running, labels }: { running: boolean; labels: readonly string[] }) {
   const [step, setStep] = useState(0);
   useEffect(() => {
     if (!running) return;
     setStep(0);
-    const id = setInterval(() => setStep((s) => Math.min(s + 1, PIPELINE.length - 1)), 1100);
+    const id = setInterval(() => setStep((s) => Math.min(s + 1, labels.length - 1)), 1100);
     return () => clearInterval(id);
-  }, [running]);
+  }, [running, labels.length]);
   return (
     <ol className="grid grid-cols-5 gap-2">
-      {PIPELINE.map((label, i) => {
+      {labels.map((label, i) => {
         const done = i < step;
         const current = i === step;
         return (
@@ -143,12 +111,15 @@ function Pipeline({ running }: { running: boolean }) {
 
 export default function RagConsole() {
   const reduce = useReducedMotion();
+  const [lang, setLang] = useLang();
+  const t = STRINGS[lang];
+  const samples = SAMPLES[lang];
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [corpus, setCorpus] = useState<CorpusResponse | null>(null);
   const [evaluations, setEvaluations] = useState<EvaluationsResponse | null>(null);
   const [bootstrapError, setBootstrapError] = useState<string | null>(null);
 
-  const [queryInput, setQueryInput] = useState<string>(SAMPLE_QUERIES[0].query);
+  const [queryInput, setQueryInput] = useState<string>(SAMPLES.en[0].query);
   const [mode, setMode] = useState<RetrievalMode>("hybrid");
   const [topK, setTopK] = useState<number>(5);
   const [loadingQuery, setLoadingQuery] = useState<boolean>(false);
@@ -176,6 +147,18 @@ export default function RagConsole() {
     void loadInitialState();
   }, [loadInitialState]);
 
+  // Keep the composer in the active language when the visitor switches.
+  const switchLang = (l: Lang) => {
+    const idx = (SAMPLES[lang] as readonly { query: string }[]).findIndex((q) => q.query === queryInput);
+    setLang(l);
+    if (idx >= 0) setQueryInput(SAMPLES[l][idx].query);
+  };
+  useEffect(() => {
+    if (lang === "es" && queryInput === SAMPLES.en[0].query) setQueryInput(SAMPLES.es[0].query);
+    document.documentElement.lang = lang;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lang]);
+
   const executeQuery = async (overrideQuery?: string) => {
     const q = (overrideQuery ?? queryInput).trim();
     if (q.length < 3) return;
@@ -193,7 +176,7 @@ export default function RagConsole() {
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       setResult(data as QueryResponse);
     } catch (err) {
-      setQueryError(err instanceof Error ? err.message : "Query execution failed.");
+      setQueryError(err instanceof Error ? err.message : t.failed);
     } finally {
       setLoadingQuery(false);
     }
@@ -267,17 +250,17 @@ export default function RagConsole() {
         <div className="mx-auto flex h-16 max-w-[1280px] items-center justify-between gap-4 px-5 sm:px-8">
           <div className="flex min-w-0 items-baseline gap-3">
             <h1 className="truncate text-[15px] font-medium tracking-tight">
-              Hybrid RAG <span className="font-serif text-lg italic text-accent">&amp;</span> LLMOps Console
+              {t.title} <span className="font-serif text-lg italic text-accent">&amp;</span> {t.titleRest}
             </h1>
             <span className="hidden font-mono text-[11px] text-ink-muted md:inline">{health?.model ?? "gemini-3.8-flash"}</span>
           </div>
-          <div className="flex items-center gap-4 text-xs">
+          <div className="flex items-center gap-3 text-xs sm:gap-4">
             <span className="hidden items-center gap-2 text-ink-muted sm:inline-flex">
               <span className="relative flex h-2 w-2">
                 {ok ? <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-ok/50" /> : null}
                 <span className={`relative inline-flex h-2 w-2 rounded-full ${ok ? "bg-ok" : "bg-warn"}`} />
               </span>
-              {ok ? "Private Cloud Run · OIDC" : "Connecting…"}
+              {ok ? t.connected : t.connecting}
             </span>
             <a
               href={REPO}
@@ -285,8 +268,17 @@ export default function RagConsole() {
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 rounded-full border border-line-strong px-3 py-1.5 text-ink transition-colors hover:border-ink"
             >
-              <Github className="h-3.5 w-3.5" /> Source
+              <Github className="h-3.5 w-3.5" /> {t.source}
             </a>
+            <Segmented
+              id="lang"
+              value={lang}
+              onChange={switchLang}
+              options={[
+                { value: "en" as Lang, label: "EN" },
+                { value: "es" as Lang, label: "ES" },
+              ]}
+            />
           </div>
         </div>
       </header>
@@ -295,14 +287,13 @@ export default function RagConsole() {
         {/* ---------------------------------------------------------------- intro */}
         <section className="grid grid-cols-12 gap-6 pb-10 pt-12 md:pt-16">
           <motion.div {...fade()} className="col-span-12 lg:col-span-8">
-            <p className="eyebrow">Firestore Vector Search · Okapi BM25 · Reciprocal Rank Fusion</p>
+            <p className="eyebrow">{t.eyebrow}</p>
             <h2 className="mt-4 text-balance text-4xl font-medium leading-[1.02] tracking-[-0.035em] md:text-6xl">
-              Answers grounded in your corpus — <span className="font-serif italic text-accent">or none at all.</span>
+              {t.h1a} <span className="font-serif italic text-accent">{t.h1b}</span>
             </h2>
           </motion.div>
           <motion.p {...fade(0.1)} className="col-span-12 self-end text-pretty text-[15px] leading-relaxed text-ink-muted lg:col-span-4">
-            Every answer cites the exact chunks it used. Every release must pass a golden-dataset gate on hallucination,
-            precision and cost before it ships.
+            {t.lede}
           </motion.p>
         </section>
 
@@ -317,25 +308,25 @@ export default function RagConsole() {
         <section data-demo="kpis" className="grid grid-cols-2 border-y border-line lg:grid-cols-4">
           {[
             {
-              label: "Indexed corpus",
-              value: corpus ? `${corpus.document_count} Docs` : "—",
-              sub: corpus ? `${corpus.total_chunks} chunks · ${corpus.embedding_dimension}d` : "Loading index…",
+              label: t.kCorpus,
+              value: corpus ? `${corpus.document_count} ${t.docs}` : "—",
+              sub: corpus ? `${corpus.total_chunks} ${t.chunks} · ${corpus.embedding_dimension}d` : t.kCorpusLoading,
             },
             {
-              label: "LLMOps quality gate",
+              label: t.kGate,
               value: latestEval ? (latestEval.gate_passed ? "PASS" : "FAIL") : "—",
-              sub: latestEval ? `${latestEval.summary.total_cases} golden cases` : "No runs yet",
+              sub: latestEval ? `${latestEval.summary.total_cases} ${t.kGateCases}` : t.kNoRuns,
               tone: latestEval ? (latestEval.gate_passed ? "text-ok" : "text-bad") : "",
             },
             {
-              label: "Hallucination rate · gate ≤ 10%",
+              label: t.kHall,
               value: latestEval ? `${(latestEval.summary.hallucination_rate * 100).toFixed(1)}%` : "—",
-              sub: latestEval ? `Precision@K ${(latestEval.summary.context_precision * 100).toFixed(1)}%` : "Awaiting telemetry",
+              sub: latestEval ? `Precision@K ${(latestEval.summary.context_precision * 100).toFixed(1)}%` : t.kAwait,
             },
             {
-              label: "Avg cost / query · gate ≤ $0.005",
+              label: t.kCost,
               value: latestEval ? `$${latestEval.summary.avg_cost_per_query_usd.toFixed(5)}` : "—",
-              sub: latestEval ? `Avg latency ${latestEval.summary.avg_latency_ms.toFixed(0)} ms` : "FinOps logging on",
+              sub: latestEval ? `${t.kAvgLat} ${latestEval.summary.avg_latency_ms.toFixed(0)} ms` : t.kFinops,
             },
           ].map((k, i) => (
             <motion.div
@@ -356,14 +347,15 @@ export default function RagConsole() {
             {/* composer */}
             <motion.div {...fade(0.2)} className="card p-5 sm:p-6">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <h3 className="text-lg font-medium tracking-tight">Ask the corpus</h3>
-                <span className="eyebrow">Golden & adversarial samples</span>
+                <h3 className="text-lg font-medium tracking-tight">{t.ask}</h3>
+                <span className="eyebrow">{t.samples}</span>
               </div>
 
               <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                {SAMPLE_QUERIES.map((sq) => (
+                {samples.map((sq, i) => (
                   <button
                     key={sq.label}
+                    data-sample={i}
                     type="button"
                     onClick={() => {
                       setQueryInput(sq.query);
@@ -388,7 +380,7 @@ export default function RagConsole() {
                     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void executeQuery();
                   }}
                   rows={3}
-                  placeholder="Ask an architecture, IAM, FinOps or SLA question…"
+                  placeholder={t.placeholder}
                   className="w-full resize-none bg-transparent px-4 pt-3.5 text-[15px] leading-relaxed text-ink placeholder:text-ink-faint focus:outline-none"
                 />
                 <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-3 py-2.5">
@@ -397,7 +389,7 @@ export default function RagConsole() {
                       id="mode"
                       value={mode}
                       onChange={setMode}
-                      options={(Object.keys(MODE_WEIGHTS) as RetrievalMode[]).map((m) => ({ value: m, label: MODE_WEIGHTS[m].short }))}
+                      options={(Object.keys(MODE_WEIGHTS) as RetrievalMode[]).map((m) => ({ value: m, label: t[m] }))}
                     />
                     <Segmented
                       id="topk"
@@ -409,10 +401,11 @@ export default function RagConsole() {
                   <button
                     type="button"
                     disabled={loadingQuery}
+                    data-demo="run"
                     onClick={() => void executeQuery()}
                     className="group inline-flex items-center gap-2 rounded-full bg-ink px-5 py-2.5 text-sm font-medium text-paper transition-transform duration-300 hover:-translate-y-px disabled:cursor-wait disabled:opacity-70"
                   >
-                    {loadingQuery ? "Retrieving…" : "Run Hybrid RAG"}
+                    {loadingQuery ? t.running : t.run}
                     <CornerDownLeft className="h-3.5 w-3.5 opacity-70" />
                   </button>
                 </div>
@@ -428,7 +421,7 @@ export default function RagConsole() {
                     className="overflow-hidden"
                   >
                     <div className="pt-5">
-                      <Pipeline running={loadingQuery} />
+                      <Pipeline running={loadingQuery} labels={t.pipeline} />
                     </div>
                   </motion.div>
                 ) : null}
@@ -453,15 +446,15 @@ export default function RagConsole() {
                 >
                   <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-4 sm:px-6">
                     <h3 className="text-lg font-medium tracking-tight">
-                      Grounded Synthesis <span className="font-mono text-xs text-ink-muted">· {result.telemetry.model}</span>
+                      {t.synth} <span className="font-mono text-xs text-ink-muted">· {result.telemetry.model}</span>
                     </h3>
                     {result.abstained ? (
                       <span className="inline-flex items-center gap-1.5 rounded-full bg-warn-soft px-3 py-1 text-xs font-medium text-warn">
-                        <ShieldCheck className="h-3.5 w-3.5" /> Hallucination guard · abstained
+                        <ShieldCheck className="h-3.5 w-3.5" /> {t.abstained}
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-1.5 rounded-full bg-ok-soft px-3 py-1 text-xs font-medium text-ok">
-                        <Check className="h-3.5 w-3.5" /> {result.cited_chunk_ids.length} {result.cited_chunk_ids.length === 1 ? "citation" : "citations"} verified
+                        <Check className="h-3.5 w-3.5" /> {result.cited_chunk_ids.length} {result.cited_chunk_ids.length === 1 ? t.citation : t.citations}
                       </span>
                     )}
                   </div>
@@ -472,7 +465,7 @@ export default function RagConsole() {
 
                   <div className="border-t border-line px-5 py-5 sm:px-6">
                     <div className="mb-3 flex items-baseline justify-between">
-                      <p className="eyebrow">Retrieved chunks · RRF fusion (k={result.retrieval_config.rrf_k})</p>
+                      <p className="eyebrow">{t.retrieved} (k={result.retrieval_config.rrf_k})</p>
                       <p className="hidden font-mono text-[10px] text-ink-faint sm:block">vector · bm25 · rrf</p>
                     </div>
                     <ol className="divide-y divide-line">
@@ -527,28 +520,28 @@ export default function RagConsole() {
           {/* ---------------------------------------------------------------- side */}
           <aside className="space-y-6 lg:col-span-4">
             <motion.div {...fade(0.25)} data-demo="telemetry" className="card p-5 sm:p-6">
-              <p className="eyebrow">Live Query FinOps &amp; Latency</p>
+              <p className="eyebrow">{t.telemetry}</p>
               {result ? (
                 <div className="mt-4">
                   <p className="font-serif text-5xl leading-none">${result.telemetry.cost.estimated_cost_usd.toFixed(6)}</p>
                   <p className="mt-2 font-mono text-[11px] text-ink-muted">
-                    {result.telemetry.cost.prompt_tokens} in · {result.telemetry.cost.completion_tokens} out ·{" "}
-                    {result.telemetry.cost.embedding_tokens} embed tokens
+                    {result.telemetry.cost.prompt_tokens} {t.tokensIn} · {result.telemetry.cost.completion_tokens} {t.tokensOut} ·{" "}
+                    {result.telemetry.cost.embedding_tokens} {t.tokensEmbed}
                   </p>
 
                   {(() => {
                     const l = result.telemetry.latency_ms;
                     const rows = [
-                      { label: "Vertex AI embedding", ms: l.embedding_ms, c: "bg-ink-faint" },
-                      { label: "Firestore vector search", ms: l.vector_search_ms, c: "bg-ink-muted" },
-                      { label: "Okapi BM25 lexical", ms: l.lexical_search_ms, c: "bg-line-strong" },
-                      { label: "Gemini synthesis", ms: l.generation_ms, c: "bg-accent" },
+                      { label: t.lat[0], ms: l.embedding_ms, c: "bg-ink-faint" },
+                      { label: t.lat[1], ms: l.vector_search_ms, c: "bg-ink-muted" },
+                      { label: t.lat[2], ms: l.lexical_search_ms, c: "bg-line-strong" },
+                      { label: t.lat[3], ms: l.generation_ms, c: "bg-accent" },
                     ];
                     const total = Math.max(rows.reduce((a, r) => a + r.ms, 0), 1);
                     return (
                       <div className="mt-6">
                         <div className="flex items-baseline justify-between">
-                          <p className="text-sm font-medium">Latency</p>
+                          <p className="text-sm font-medium">{t.latency}</p>
                           <p className="font-mono text-xs">{l.total_ms.toFixed(0)} ms</p>
                         </div>
                         <div className="mt-2 flex h-2 overflow-hidden rounded-full bg-paper-deep">
@@ -584,24 +577,18 @@ export default function RagConsole() {
                 </div>
               ) : (
                 <p className="mt-3 text-sm leading-relaxed text-ink-muted">
-                  Run a query to see per-query token usage, exact USD cost, the latency split between embedding, vector
-                  search, BM25 and generation, and the Cloud Logging trace.
+                  {t.teleEmpty}
                 </p>
               )}
             </motion.div>
 
             <motion.div {...fade(0.3)} className="card p-5 sm:p-6">
-              <p className="eyebrow">Zero idle cost · private IAM</p>
+              <p className="eyebrow">{t.posture}</p>
               <ul className="mt-4 divide-y divide-line">
-                {[
-                  ["Firestore Vector Search", "768d flat COSINE index — no always-on vector endpoint, $0 idle."],
-                  ["Private Cloud Run v2", "min 0 / max 2 instances; unauthenticated calls get HTTP 403."],
-                  ["Server-side OIDC BFF", "Short-lived Google ID tokens minted per request by a scoped SA."],
-                  ["Workflows + Cloud Run Job", "Async GCS ingestion with PII redaction before embedding."],
-                ].map(([t, d]) => (
-                  <li key={t} className="py-3 first:pt-0 last:pb-0">
+                {t.postureItems.map(([k, d]) => (
+                  <li key={k} className="py-3 first:pt-0 last:pb-0">
                     <p className="flex items-center gap-2 text-sm font-medium">
-                      <Check className="h-3.5 w-3.5 text-ok" /> {t}
+                      <Check className="h-3.5 w-3.5 text-ok" /> {k}
                     </p>
                     <p className="mt-1 pl-5.5 text-xs leading-relaxed text-ink-muted">{d}</p>
                   </li>
@@ -610,14 +597,14 @@ export default function RagConsole() {
             </motion.div>
 
             <motion.div {...fade(0.35)} className="card p-5 sm:p-6">
-              <p className="eyebrow">Indexed corpus · {corpus?.document_count ?? 0} documents</p>
+              <p className="eyebrow">{t.corpus} · {corpus?.document_count ?? 0} {t.documents}</p>
               <ul className="mt-3 max-h-72 divide-y divide-line overflow-y-auto pr-1">
                 {corpus?.documents.map((doc) => (
                   <li key={doc.doc_id} className="py-2.5">
                     <p className="truncate text-[13px] text-ink">{doc.title}</p>
                     <p className="mt-0.5 flex justify-between font-mono text-[10.5px] text-ink-muted">
                       <span className="truncate">{doc.doc_id}</span>
-                      <span>{doc.chunk_count} chunks</span>
+                      <span>{doc.chunk_count} {t.chunks}</span>
                     </p>
                   </li>
                 ))}
@@ -630,13 +617,12 @@ export default function RagConsole() {
         <section data-demo="gate" className="mt-16">
           <div className="flex flex-wrap items-end justify-between gap-4 border-t border-ink pt-5">
             <div>
-              <p className="eyebrow">Pre-deployment quality gate</p>
+              <p className="eyebrow">{t.gateEyebrow}</p>
               <h3 className="mt-2 text-3xl font-medium tracking-tight md:text-4xl">
-                LLMOps evaluation <span className="font-serif italic text-accent">report</span>
+                {t.gateTitleA} <span className="font-serif italic text-accent">{t.gateTitleB}</span>
               </h3>
               <p className="mt-2 max-w-2xl text-sm text-ink-muted">
-                Golden-dataset run persisted in Firestore (<code className="font-mono text-xs">evaluation_runs</code>):
-                hallucination, precision@K, recall, abstention and cost.
+                {t.gateLede}
               </p>
             </div>
             {latestEval ? (
@@ -648,7 +634,7 @@ export default function RagConsole() {
                   }`}
                 >
                   {latestEval.gate_passed ? <Check className="h-3.5 w-3.5" /> : <X className="h-3.5 w-3.5" />}
-                  Gate {latestEval.gate_passed ? "passed" : "failed"}
+                  {latestEval.gate_passed ? t.gatePassed : t.gateFailed}
                 </span>
               </div>
             ) : null}
@@ -659,35 +645,35 @@ export default function RagConsole() {
               <div className="mt-8 grid grid-cols-2 gap-x-6 gap-y-8 md:grid-cols-5">
                 {[
                   {
-                    l: "Hallucination rate",
+                    l: t.mHall,
                     v: latestEval.summary.hallucination_rate,
                     fmt: (x: number) => `${(x * 100).toFixed(1)}%`,
                     t: `≤ ${(latestEval.thresholds.max_hallucination_rate * 100).toFixed(0)}%`,
                     bar: latestEval.summary.hallucination_rate / Math.max(latestEval.thresholds.max_hallucination_rate, 1e-9),
                   },
                   {
-                    l: "Context precision@K",
+                    l: t.mPrec,
                     v: latestEval.summary.context_precision,
                     fmt: (x: number) => `${(x * 100).toFixed(1)}%`,
                     t: `≥ ${(latestEval.thresholds.min_context_precision * 100).toFixed(0)}%`,
                     bar: latestEval.summary.context_precision,
                   },
                   {
-                    l: "Context recall@K",
+                    l: t.mRec,
                     v: latestEval.summary.context_recall,
                     fmt: (x: number) => `${(x * 100).toFixed(1)}%`,
-                    t: "expected doc coverage",
+                    t: t.mRecSub,
                     bar: latestEval.summary.context_recall,
                   },
                   {
-                    l: "Abstention accuracy",
+                    l: t.mAbs,
                     v: latestEval.summary.abstention_accuracy,
                     fmt: (x: number) => `${(x * 100).toFixed(0)}%`,
-                    t: `${latestEval.summary.unanswerable_cases} negative probes`,
+                    t: `${latestEval.summary.unanswerable_cases} ${t.mAbsSub}`,
                     bar: latestEval.summary.abstention_accuracy,
                   },
                   {
-                    l: "Avg cost / query",
+                    l: t.mCost,
                     v: latestEval.summary.avg_cost_per_query_usd,
                     fmt: (x: number) => `$${x.toFixed(5)}`,
                     t: `p95 $${latestEval.summary.p95_cost_per_query_usd.toFixed(5)}`,
@@ -715,7 +701,7 @@ export default function RagConsole() {
                 <table className="w-full min-w-[760px] text-left text-[13px]">
                   <thead>
                     <tr className="border-b border-line">
-                      {["Case", "Category", "Query", "Grounding", "Precision", "Cost", "Latency"].map((h) => (
+                      {t.cols.map((h) => (
                         <th key={h} className="eyebrow px-4 py-3 !text-[10px] font-normal">
                           {h}
                         </th>
@@ -735,15 +721,15 @@ export default function RagConsole() {
                         <td className="whitespace-nowrap px-4 py-3">
                           {c.hallucinated ? (
                             <span className="inline-flex items-center gap-1.5 text-bad">
-                              <span className="h-1.5 w-1.5 rounded-full bg-bad" /> Hallucinated
+                              <span className="h-1.5 w-1.5 rounded-full bg-bad" /> {t.hallucinated}
                             </span>
                           ) : c.unanswerable ? (
                             <span className="inline-flex items-center gap-1.5 text-warn">
-                              <span className="h-1.5 w-1.5 rounded-full bg-warn" /> Abstained OK
+                              <span className="h-1.5 w-1.5 rounded-full bg-warn" /> {t.abstainedOk}
                             </span>
                           ) : (
                             <span className="inline-flex items-center gap-1.5 text-ok">
-                              <span className="h-1.5 w-1.5 rounded-full bg-ok" /> Grounded
+                              <span className="h-1.5 w-1.5 rounded-full bg-ok" /> {t.grounded}
                             </span>
                           )}
                         </td>
@@ -760,13 +746,13 @@ export default function RagConsole() {
             </>
           ) : (
             <div className="card mt-8 p-8 text-center text-sm text-ink-muted">
-              No evaluation runs persisted yet. Run the automated LLMOps evaluator to populate this report.
+              {t.noRuns}
             </div>
           )}
         </section>
 
         <footer className="mt-20 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-6 font-mono text-[11px] text-ink-muted">
-          <span>Built by Daniel Tafur · AI Agent Engineer</span>
+          <span>{t.built}</span>
           <a href="https://danieltafur.vercel.app" target="_blank" rel="noopener noreferrer" className="hover:text-ink">
             danieltafur.vercel.app ↗
           </a>
